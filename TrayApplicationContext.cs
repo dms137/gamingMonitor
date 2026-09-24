@@ -340,11 +340,11 @@ public class TrayApplicationContext : ApplicationContext
             Log.Information("[Update] Updater launched, exiting...");
             if (_uiContext != null)
             {
-                _uiContext.Post(_ => Application.Exit(), null);
+                _uiContext.Post(_ => Shutdown("Update downloaded, restarting for install."), null);
             }
             else
             {
-                Application.Exit();
+                Shutdown("Update downloaded, restarting for install.");
             }
         }
         catch (Exception ex)
@@ -378,9 +378,18 @@ public class TrayApplicationContext : ApplicationContext
 
     private void Exit_Click(object? sender, EventArgs e)
     {
+        Shutdown("Exit requested from tray menu.");
+    }
+
+    /// <summary>
+    /// Releases power requests, disposes hardware handles, flushes the log
+    /// and exits. Shared by manual exit and update restart.
+    /// </summary>
+    private void Shutdown(string reason)
+    {
         _isShuttingDown = true;
 
-        Log.Information("System shutdown detected. Releasing power requests...");
+        Log.Information($"{reason} Releasing power requests...");
         PowerManagement.SetDisplayRequired(false);
         PowerManagement.SetSystemRequired(false);
         _dualSenseMonitor.Dispose();

@@ -16,28 +16,37 @@ public static class Updater
     {
         try
         {
+            Log($"Updater started. source={sourceDir} waitPid={waitPid} install={installDir}");
+
             try
             {
                 Process.GetProcessById(waitPid).WaitForExit(20000);
+                Log("Main instance exited.");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Log($"Wait finished: {ex.GetType().Name}");
+            }
 
             Thread.Sleep(1000);
 
-            string? currentExe = Environment.ProcessPath;
-            if (!string.IsNullOrEmpty(currentExe))
+            string freshExe = Path.Combine(sourceDir, "GamingMonitor.exe");
+            string targetExe = Path.Combine(installDir, "GamingMonitor.exe");
+            if (File.Exists(freshExe))
             {
-                string freshExe = Path.Combine(sourceDir, Path.GetFileName(currentExe));
-                if (File.Exists(freshExe))
-                {
-                    File.Copy(freshExe, Path.Combine(installDir, Path.GetFileName(currentExe)), true);
-                }
+                File.Copy(freshExe, targetExe, true);
+                Log($"Copied exe, new size: {new FileInfo(targetExe).Length} bytes.");
+            }
+            else
+            {
+                Log($"ERROR: fresh exe not found: {freshExe}");
             }
 
             string assetsSource = Path.Combine(sourceDir, "assets");
             if (Directory.Exists(assetsSource))
             {
                 Directory.CreateDirectory(Path.Combine(installDir, "assets"));
+                int copied = 0;
                 foreach (string file in Directory.GetFiles(assetsSource))
                 {
                     if (string.Equals(Path.GetFileName(file), SettingsFileName, StringComparison.OrdinalIgnoreCase))
@@ -46,7 +55,14 @@ public static class Updater
                     }
 
                     File.Copy(file, Path.Combine(installDir, "assets", Path.GetFileName(file)), true);
+                    copied++;
                 }
+
+                Log($"Copied {copied} asset(s).");
+            }
+            else
+            {
+                Log($"No assets folder: {assetsSource}");
             }
 
             string tag = Path.GetFileName(Path.GetDirectoryName(sourceDir)) ?? string.Empty;
@@ -57,6 +73,7 @@ public static class Updater
                 UseShellExecute = true,
                 WorkingDirectory = installDir
             });
+            Log("Restarted new instance.");
 
             // Self-cleanup: a running exe cannot delete its own folder,
             // so schedule deletion after this process exits.
@@ -73,6 +90,20 @@ public static class Updater
                 }
             }
             catch { }
+        }
+        catch (Exception ex)
+        {
+            Log($"FATAL: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private static void Log(string message)
+    {
+        try
+        {
+            string logPath = Path.Combine(Path.GetTempPath(), "GamingMonitor", "update.log");
+            Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+            File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
         }
         catch { }
     }
