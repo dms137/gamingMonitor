@@ -190,7 +190,13 @@ public partial class SettingsForm : Form
         captionFlow.Controls.Add(thresholdCaption);
         captionFlow.Controls.Add(infoLabel);
 
-        _toolTip = new ToolTip();
+        _toolTip = new ToolTip
+        {
+            InitialDelay = 200,
+            ReshowDelay = 100,
+            AutoPopDelay = 10000,
+            ShowAlways = true
+        };
         _toolTip.SetToolTip(infoLabel, "System is treated as gaming when GPU load exceeds this value.");
 
         _thresholdSlider = new TrackBar

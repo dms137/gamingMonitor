@@ -13,6 +13,16 @@ public static partial class Program
             return;
         }
 
+        string? justUpdatedTo = null;
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i] == "--updated")
+            {
+                justUpdatedTo = args[i + 1].Trim('"');
+                break;
+            }
+        }
+
         // Mandatory initialization of AUMID and Toast Manager
         const string MyAumid = "MyCompany.GamingMonitor";
         NotificationAumidHelper.SetCurrentProcessExplicitAppUserModelID(MyAumid);
@@ -20,7 +30,7 @@ public static partial class Program
         // Enable modern control styles for settings UI
         ApplicationConfiguration.Initialize();
 
-        var context = new TrayApplicationContext();
+        var context = new TrayApplicationContext(justUpdatedTo);
 
         // Toast clicks (fire on a background thread)
         ToastNotificationManagerCompat.OnActivated += toastArgs =>

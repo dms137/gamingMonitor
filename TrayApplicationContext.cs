@@ -10,6 +10,7 @@ public class TrayApplicationContext : ApplicationContext
     private SettingsForm? _settingsForm;
     private DateTime _flyoutClosedAt = DateTime.MinValue;
     private volatile bool _updateInProgress;
+    private readonly string? _justUpdatedTo;
 
     private DualSenseMonitor _dualSenseMonitor = new DualSenseMonitor();
     private static volatile bool _isShuttingDown = false;
@@ -25,8 +26,10 @@ public class TrayApplicationContext : ApplicationContext
 
     private const int CHECK_INTERVAL_MS = 10000;
 
-    public TrayApplicationContext()
+    public TrayApplicationContext(string? justUpdatedTo = null)
     {
+        _justUpdatedTo = justUpdatedTo;
+
         LoggingConfig.ConfigureLogger();
         AppSettings.Load();
         CleanStaleUpdateFiles();
@@ -42,12 +45,20 @@ public class TrayApplicationContext : ApplicationContext
         };
         trayIcon.MouseClick += TrayIcon_MouseClick;
 
-        ToolStripMenuItem stateItem = new ToolStripMenuItem($"Current state: {_currentState}");
+        ToolStripMenuItem stateItem = new ToolStripMenuItem($"Current state: {_currentState}")
+        {
+            Enabled = false
+        };
 
         trayIcon.ContextMenuStrip.Items.Add(stateItem);
 
+        trayIcon.ContextMenuStrip.Items.Add(new ToolStripSeparator());
+
         ToolStripMenuItem settingsItem = new ToolStripMenuItem("Settings", null, Settings_Click);
         trayIcon.ContextMenuStrip.Items.Add(settingsItem);
+
+        ToolStripMenuItem updateItem = new ToolStripMenuItem("Check for updates", null, CheckUpdates_Click);
+        trayIcon.ContextMenuStrip.Items.Add(updateItem);
 
         trayIcon.ContextMenuStrip.Items.Add(new ToolStripSeparator());
 
@@ -65,12 +76,19 @@ public class TrayApplicationContext : ApplicationContext
         mainThread.Start();
 
         // Fire-and-forget update check, must not block startup
-        _ = Task.Run(UpdateChecker.CheckOnStartupAsync);
+        _ = Task.Run(() => UpdateChecker.CheckOnStartupAsync());
     }
 
     private void MainCheckLoop()
     {
-        NotificationHelper.ShowWelcomeNotification();
+        if (_justUpdatedTo != null)
+        {
+            NotificationHelper.ShowUpdatedNotification(_justUpdatedTo);
+        }
+        else
+        {
+            NotificationHelper.ShowWelcomeNotification();
+        }
         AppState newlyCalculatedState;
         while (true)
         {
@@ -208,6 +226,11 @@ public class TrayApplicationContext : ApplicationContext
     private void Settings_Click(object? sender, EventArgs e)
     {
         ToggleSettings();
+    }
+
+    private void CheckUpdates_Click(object? sender, EventArgs e)
+    {
+        _ = Task.Run(() => UpdateChecker.CheckOnStartupAsync(manual: true));
     }
 
     /// <summary>

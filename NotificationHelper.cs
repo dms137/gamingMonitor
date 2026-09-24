@@ -86,6 +86,44 @@ public static class NotificationHelper
     }
 
     /// <summary>
+    /// Shows a toast confirming the app has updated and restarted.
+    /// </summary>
+    public static void ShowUpdatedNotification(string version)
+    {
+        try
+        {
+            new ToastContentBuilder()
+                .AddText("Update installed")
+                .AddText($"Running version {version}")
+                .SetToastDuration(ToastDuration.Long)
+                .Show();
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"[Notification ERROR] Failed to show toast: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Shows a toast confirming the app is up to date.
+    /// </summary>
+    public static void ShowUpToDateNotification(string current)
+    {
+        try
+        {
+            new ToastContentBuilder()
+                .AddText("You are up to date")
+                .AddText($"Current version: {current}")
+                .SetToastDuration(ToastDuration.Short)
+                .Show();
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"[Notification ERROR] Failed to show toast: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Shows a toast when the automatic update fails.
     /// </summary>
     public static void ShowUpdateFailedNotification()

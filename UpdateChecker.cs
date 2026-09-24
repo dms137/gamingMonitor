@@ -7,10 +7,11 @@ public static class UpdateChecker
     private const string LatestReleaseApiUrl = "https://api.github.com/repos/dms137/gamingMonitor/releases/latest";
 
     /// <summary>
-    /// Checks GitHub for a newer release. Shows a toast if one is available.
+    /// Checks GitHub for a newer release. Shows a toast if one is available,
+    /// or an up-to-date confirmation when triggered manually.
     /// Never throws, never blocks startup.
     /// </summary>
-    public static async Task CheckOnStartupAsync()
+    public static async Task CheckOnStartupAsync(bool manual = false)
     {
         try
         {
@@ -50,6 +51,10 @@ public static class UpdateChecker
             else
             {
                 Log.Information($"[Update] Up to date: {current}.");
+                if (manual)
+                {
+                    NotificationHelper.ShowUpToDateNotification(current.ToString());
+                }
             }
         }
         catch (Exception ex)

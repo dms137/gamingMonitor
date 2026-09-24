@@ -49,8 +49,11 @@ public static class Updater
                 }
             }
 
+            string tag = Path.GetFileName(Path.GetDirectoryName(sourceDir)) ?? string.Empty;
+            string arguments = string.IsNullOrEmpty(tag) ? string.Empty : $"--updated \"{tag}\"";
             Process.Start(new ProcessStartInfo(Path.Combine(installDir, "GamingMonitor.exe"))
             {
+                Arguments = arguments,
                 UseShellExecute = true,
                 WorkingDirectory = installDir
             });
