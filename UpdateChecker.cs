@@ -73,6 +73,7 @@ public static class UpdateChecker
             string? name = asset.TryGetProperty("name", out JsonElement nameProp) ? nameProp.GetString() : null;
             string? downloadUrl = asset.TryGetProperty("browser_download_url", out JsonElement urlProp) ? urlProp.GetString() : null;
             if (!string.IsNullOrWhiteSpace(name) &&
+                name.StartsWith("GamingMonitor-", StringComparison.OrdinalIgnoreCase) &&
                 name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) &&
                 !string.IsNullOrWhiteSpace(downloadUrl))
             {

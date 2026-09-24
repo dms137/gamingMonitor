@@ -1,4 +1,5 @@
 using Serilog;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 public partial class SettingsForm : Form
@@ -207,6 +208,18 @@ public partial class SettingsForm : Form
         _thresholdSlider.Scroll += ThresholdSlider_Scroll;
 
         // Footer
+        var versionLabel = new Label
+        {
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Font = new Font("Segoe UI", 9, FontStyle.Regular),
+            ForeColor = SecondaryColor,
+            BackColor = BgColor,
+            Margin = Padding.Empty
+        };
+        Version? appVersion = Assembly.GetExecutingAssembly().GetName().Version;
+        versionLabel.Text = appVersion != null ? $"v{appVersion.Major}.{appVersion.Minor}.{appVersion.Build}" : "v?";
+
         var closeButton = new Button
         {
             Text = "Close",
@@ -245,6 +258,7 @@ public partial class SettingsForm : Form
         grid.Controls.Add(_valueLabel, 1, 1);
         grid.Controls.Add(_thresholdSlider, 0, 2);
         grid.SetColumnSpan(_thresholdSlider, 2);
+        grid.Controls.Add(versionLabel, 0, 3);
         grid.Controls.Add(closeButton, 1, 3);
 
         Controls.Add(header);

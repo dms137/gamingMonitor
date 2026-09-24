@@ -177,7 +177,12 @@ public class TrayApplicationContext : ApplicationContext
         void apply()
         {
             trayIcon.Text = $"Gaming Monitor - {_currentState}";
-            trayIcon.ContextMenuStrip.Items[0].Text = $"State: {_currentState}";
+
+            var menu = trayIcon.ContextMenuStrip;
+            if (menu != null && menu.Items.Count > 0)
+            {
+                menu.Items[0].Text = $"State: {_currentState}";
+            }
 
             NotificationHelper.ShowStateChangeNotification(_currentState.ToString(), isDisplayControlled, isSleepControlled);
         }
@@ -190,11 +195,6 @@ public class TrayApplicationContext : ApplicationContext
         {
             apply();
         }
-    }
-
-    private void ShowStatus_Click(object sender, EventArgs e)
-    {
-        trayIcon.ContextMenuStrip.Items[0].Text = $"State: {_currentState}";
     }
 
     private void TrayIcon_MouseClick(object? sender, MouseEventArgs e)
@@ -353,7 +353,7 @@ public class TrayApplicationContext : ApplicationContext
         }
     }
 
-    private void Exit_Click(object sender, EventArgs e)
+    private void Exit_Click(object? sender, EventArgs e)
     {
         _isShuttingDown = true;
 

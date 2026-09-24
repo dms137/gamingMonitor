@@ -9,8 +9,8 @@ public class DualSenseMonitor : IDisposable
     private const int STICK_DEADZONE_INT = 30; // ~12% of 255
     private const int BT_REPORT_LENGTH = 547;
 
-    private HidDevice _dualSenseDevice;
-    private HidStream _dualSenseStream;
+    private HidDevice? _dualSenseDevice;
+    private HidStream? _dualSenseStream;
     private byte[] _inputReportBuffer = new byte[BT_REPORT_LENGTH];
 
     public DualSenseMonitor()
