@@ -37,6 +37,74 @@ public static class NotificationHelper
     }
 
     /// <summary>
+    /// Shows a toast about an available update with a Download button.
+    /// Clicking it fires OnActivated with action=downloadUpdate.
+    /// </summary>
+    public static void ShowUpdateAvailableNotification(string version, string tag, string zipUrl)
+    {
+        try
+        {
+            new ToastContentBuilder()
+                .AddText($"Update available: {version}")
+                .AddText("Click Download to install it automatically.")
+                .AddButton(new ToastButton()
+                    .SetContent("Download and install")
+                    .AddArgument("action", "downloadUpdate")
+                    .AddArgument("tag", tag)
+                    .AddArgument("zip", zipUrl))
+                .SetToastDuration(ToastDuration.Long)
+                .Show();
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"[Notification ERROR] Failed to show toast: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Fallback when the release has no downloadable zip.
+    /// Clicking it fires OnActivated with action=openRelease.
+    /// </summary>
+    public static void ShowReleasePageNotification(string version, string url)
+    {
+        try
+        {
+            new ToastContentBuilder()
+                .AddText($"Update available: {version}")
+                .AddText("Click Open to download it manually.")
+                .AddButton(new ToastButton()
+                    .SetContent("Open release page")
+                    .AddArgument("action", "openRelease")
+                    .AddArgument("url", url))
+                .SetToastDuration(ToastDuration.Long)
+                .Show();
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"[Notification ERROR] Failed to show toast: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Shows a toast when the automatic update fails.
+    /// </summary>
+    public static void ShowUpdateFailedNotification()
+    {
+        try
+        {
+            new ToastContentBuilder()
+                .AddText("Update failed")
+                .AddText("See the log file for details.")
+                .SetToastDuration(ToastDuration.Long)
+                .Show();
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"[Notification ERROR] Failed to show toast: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Sends a Windows toast notification about state change.
     /// </summary>
     /// <param name="newState">New application state (e.g., "Gaming" or "Idle").</param>

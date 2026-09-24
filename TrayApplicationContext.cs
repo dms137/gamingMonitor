@@ -1,4 +1,6 @@
 ﻿using Serilog;
+using System.Diagnostics;
+using System.IO.Compression;
 
 public class TrayApplicationContext : ApplicationContext
 {
@@ -7,6 +9,7 @@ public class TrayApplicationContext : ApplicationContext
     private AppState _currentState = AppState.Idle;
     private SettingsForm? _settingsForm;
     private DateTime _flyoutClosedAt = DateTime.MinValue;
+    private volatile bool _updateInProgress;
 
     private DualSenseMonitor _dualSenseMonitor = new DualSenseMonitor();
     private static volatile bool _isShuttingDown = false;
@@ -26,12 +29,13 @@ public class TrayApplicationContext : ApplicationContext
     {
         LoggingConfig.ConfigureLogger();
         AppSettings.Load();
+        CleanStaleUpdateFiles();
 
         Log.Information("Application started and configured.");
 
         trayIcon = new NotifyIcon()
         {
-            Icon = new Icon("GM.ico"),
+            Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "assets", "GM.ico")),
             ContextMenuStrip = new ContextMenuStrip(),
             Visible = true,
             Text = "Gaming Monitor - Idle"
@@ -59,6 +63,9 @@ public class TrayApplicationContext : ApplicationContext
         Thread mainThread = new Thread(MainCheckLoop);
         mainThread.IsBackground = true;
         mainThread.Start();
+
+        // Fire-and-forget update check, must not block startup
+        _ = Task.Run(UpdateChecker.CheckOnStartupAsync);
     }
 
     private void MainCheckLoop()
@@ -215,6 +222,113 @@ public class TrayApplicationContext : ApplicationContext
         else
         {
             ToggleSettings();
+        }
+    }
+
+    /// <summary>
+    /// Removes leftover update files from previous sessions.
+    /// </summary>
+    private static void CleanStaleUpdateFiles()
+    {
+        try
+        {
+            string updateRoot = Path.Combine(Path.GetTempPath(), "GamingMonitor", "update");
+            if (Directory.Exists(updateRoot))
+            {
+                Directory.Delete(updateRoot, true);
+                Log.Information("[Update] Cleaned stale update files.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning($"[Update] Stale update cleanup failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Downloads the release zip and applies it via a helper process.
+    /// Safe to call from any thread.
+    /// </summary>
+    public void DownloadAndApplyUpdate(string tag, string zipUrl)
+    {
+        if (_updateInProgress)
+        {
+            return;
+        }
+
+        _updateInProgress = true;
+        _ = Task.Run(() => DownloadAndApplyUpdateAsync(tag, zipUrl));
+    }
+
+    private async Task DownloadAndApplyUpdateAsync(string tag, string zipUrl)
+    {
+        string updateRoot = Path.Combine(Path.GetTempPath(), "GamingMonitor", "update");
+        string tempRoot = Path.Combine(updateRoot, tag);
+        try
+        {
+            Log.Information($"[Update] Downloading {tag}...");
+
+            foreach (string dir in Directory.Exists(updateRoot) ? Directory.GetDirectories(updateRoot) : Array.Empty<string>())
+            {
+                if (!string.Equals(dir, tempRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    try { Directory.Delete(dir, true); } catch { }
+                }
+            }
+
+            Directory.CreateDirectory(tempRoot);
+            string zipPath = Path.Combine(tempRoot, "app.zip");
+            using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) })
+            {
+                http.DefaultRequestHeaders.UserAgent.ParseAdd("GamingMonitor");
+                using var response = await http.GetAsync(zipUrl, HttpCompletionOption.ResponseHeadersRead);
+                response.EnsureSuccessStatusCode();
+                await using var content = await response.Content.ReadAsStreamAsync();
+                await using var file = File.Create(zipPath);
+                await content.CopyToAsync(file);
+            }
+
+            string extractDir = Path.Combine(tempRoot, "new");
+            if (Directory.Exists(extractDir))
+            {
+                Directory.Delete(extractDir, true);
+            }
+
+            ZipFile.ExtractToDirectory(zipPath, extractDir);
+
+            string? currentExe = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(currentExe))
+            {
+                throw new InvalidOperationException("Cannot locate current executable.");
+            }
+
+            string updaterDir = Path.Combine(tempRoot, "updater");
+            Directory.CreateDirectory(updaterDir);
+            string updaterExe = Path.Combine(updaterDir, "GamingMonitor.Updater.exe");
+            File.Copy(currentExe, updaterExe, true);
+
+            string installDir = AppContext.BaseDirectory;
+            var startInfo = new ProcessStartInfo(updaterExe, $"--apply-update \"{extractDir}\" {Environment.ProcessId} \"{installDir}\"")
+            {
+                UseShellExecute = false
+            };
+            Process.Start(startInfo);
+
+            Log.Information("[Update] Updater launched, exiting...");
+            if (_uiContext != null)
+            {
+                _uiContext.Post(_ => Application.Exit(), null);
+            }
+            else
+            {
+                Application.Exit();
+            }
+        }
+        catch (Exception ex)
+        {
+            _updateInProgress = false;
+            Log.Error($"[Update ERROR] Auto-update failed: {ex.Message}");
+            NotificationHelper.ShowUpdateFailedNotification();
         }
     }
 

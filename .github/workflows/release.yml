@@ -19,10 +19,15 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Set version from tag
+        shell: pwsh
+        run: echo "APP_VERSION=$($env:GITHUB_REF_NAME.TrimStart('v'))" >> $env:GITHUB_ENV
+
       - name: Publish self-contained single-file build
         run: >
           dotnet publish GamingMonitor.csproj -c Release -r win-x64
           --self-contained true
+          -p:Version=${{ env.APP_VERSION }}
           -p:PublishSingleFile=true
           -p:PublishReadyToRun=true
           -p:PublishTrimmed=false
@@ -30,7 +35,7 @@ jobs:
 
       - name: Pack release archive
         shell: pwsh
-        run: Compress-Archive -Path publish/GamingMonitor.exe,publish/GM.ico -DestinationPath GamingMonitor-${{ github.ref_name }}-win-x64.zip
+        run: Compress-Archive -Path publish/GamingMonitor.exe,publish/assets -DestinationPath GamingMonitor-${{ github.ref_name }}-win-x64.zip
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

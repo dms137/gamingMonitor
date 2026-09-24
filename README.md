@@ -47,8 +47,9 @@ state change, and logs to `logs/monitor_log.txt` (Serilog, daily rolling).
 
 1. Download `GamingMonitor-vX.Y.Z-win-x64.zip` from
    [Releases](https://github.com/dms137/gameMonitor/releases).
-2. Extract `GamingMonitor.exe` and `GM.ico` into the same folder
-   (for example `C:\Tools\GamingMonitor\`).
+2. Extract the archive preserving the folder structure
+   (for example into `C:\Tools\GamingMonitor\`), so `assets\GM.ico`
+   stays next to `GamingMonitor.exe`.
 3. Run `GamingMonitor.exe`. For autostart, place a shortcut to it in
    `shell:startup`.
 

@@ -7,7 +7,7 @@ public static class AppSettings
     public const float MinGpuThresholdPercent = 5.0f;
     public const float MaxGpuThresholdPercent = 90.0f;
 
-    private static readonly string _settingsPath = Path.Combine(AppContext.BaseDirectory, "settings.json");
+    private static readonly string _settingsPath = Path.Combine(AppContext.BaseDirectory, "assets", "settings.json");
 
     private static float _gpuThresholdPercent = DefaultGpuThresholdPercent;
 
@@ -51,6 +51,7 @@ public static class AppSettings
     {
         try
         {
+            Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
             var data = new SettingsData { GpuThresholdPercent = GpuThresholdPercent };
             string json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_settingsPath, json);
