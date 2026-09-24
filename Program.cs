@@ -8,9 +8,16 @@ public static partial class Program
         // Mandatory initialization of AUMID and Toast Manager
         const string MyAumid = "MyCompany.GamingMonitor";
         NotificationAumidHelper.SetCurrentProcessExplicitAppUserModelID(MyAumid);
-        ToastNotificationManagerCompat.OnActivated += toastArgs => { };
+
+        // Enable modern control styles for settings UI
+        ApplicationConfiguration.Initialize();
+
+        var context = new TrayApplicationContext();
+
+        // Clicking a toast opens the settings flyout (fires on a background thread)
+        ToastNotificationManagerCompat.OnActivated += toastArgs => context.ShowSettings();
 
         // Run application using tray context
-        Application.Run(new TrayApplicationContext());
+        Application.Run(context);
     }
 }

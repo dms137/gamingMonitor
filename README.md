@@ -1,5 +1,10 @@
 # GamingMonitor
 
+> [!WARNING]
+> This project was vibe-coded from start to finish. It works on the author's
+> machine, but expect quirks, hardcoded thresholds, and minimal error handling.
+> Review the code before trusting it with your power settings.
+
 A lightweight Windows system-tray utility that keeps your PC awake while you are gaming,
 watching rendering workloads, or downloading games — and lets it sleep otherwise.
 
@@ -58,16 +63,6 @@ dotnet publish GamingMonitor.csproj -p:PublishProfile=FolderProfile
 ```
 
 Output lands in `bin\Release\net8.0-windows10.0.19041.0\publish\win-x64\`.
-
-## Releases
-
-Binaries are built automatically by GitHub Actions. To cut a release,
-push a tag — every other push to `main` only runs a regular build check:
-
-```powershell
-git tag v0.2.0
-git push origin v0.2.0
-```
 
 ## Tech stack
 

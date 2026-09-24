@@ -5,11 +5,15 @@ public static class GpuMonitor
 {
     private const string CATEGORY_NAME = "GPU Engine";
     private const string COUNTER_NAME = "Utilization Percentage";
-    private const float ACTIVE_THRESHOLD_PERCENT = 25.0f;
     private const int SAMPLE_DELAY_MS = 1000;
 
     private static readonly PerformanceCounterCategory _category = new PerformanceCounterCategory(CATEGORY_NAME);
     private static readonly Dictionary<string, PerformanceCounter> _counters = new Dictionary<string, PerformanceCounter>();
+
+    /// <summary>
+    /// Last measured total GPU utilization. Updated on every check cycle.
+    /// </summary>
+    public static float LastUtilization { get; private set; }
 
     /// <summary>
     /// Returns total GPU utilization across all engines.
@@ -30,6 +34,7 @@ public static class GpuMonitor
 
         if (instanceNames.Length == 0)
         {
+            LastUtilization = 0;
             return 0;
         }
 
@@ -64,6 +69,7 @@ public static class GpuMonitor
 
         if (_counters.Count == 0)
         {
+            LastUtilization = 0;
             return 0;
         }
 
@@ -80,16 +86,18 @@ public static class GpuMonitor
             catch { }
         }
 
+        LastUtilization = total;
         return total;
     }
 
     /// <summary>
     /// Checks if total GPU utilization exceeds the threshold.
     /// </summary>
-    public static bool IsGpuActive(float thresholdPercent = ACTIVE_THRESHOLD_PERCENT)
+    public static bool IsGpuActive(float? thresholdPercent = null)
     {
+        float threshold = thresholdPercent ?? AppSettings.GpuThresholdPercent;
         float total = GetTotalUtilization();
-        bool isActive = total > thresholdPercent;
+        bool isActive = total > threshold;
 
         Log.Information($"[GPU Monitor]: {(isActive ? "Active" : "Inactive")}. Utilization: {total:F1}%.");
 
