@@ -1,0 +1,98 @@
+using Serilog;
+using System.Diagnostics;
+
+public static class GpuMonitor
+{
+    private const string CATEGORY_NAME = "GPU Engine";
+    private const string COUNTER_NAME = "Utilization Percentage";
+    private const float ACTIVE_THRESHOLD_PERCENT = 25.0f;
+    private const int SAMPLE_DELAY_MS = 1000;
+
+    private static readonly PerformanceCounterCategory _category = new PerformanceCounterCategory(CATEGORY_NAME);
+    private static readonly Dictionary<string, PerformanceCounter> _counters = new Dictionary<string, PerformanceCounter>();
+
+    /// <summary>
+    /// Returns total GPU utilization across all engines.
+    /// </summary>
+    public static float GetTotalUtilization()
+    {
+        string[] instanceNames;
+
+        try
+        {
+            instanceNames = _category.GetInstanceNames();
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"[CRITICAL ERROR] Cannot access GPU performance counters: {ex.Message}");
+            return 0;
+        }
+
+        if (instanceNames.Length == 0)
+        {
+            return 0;
+        }
+
+        // 1. Clean up non-existent counters
+        var expiredKeys = _counters.Keys
+            .Where(k => !instanceNames.Contains(k))
+            .ToList();
+
+        foreach (var key in expiredKeys)
+        {
+            try { _counters[key].Dispose(); }
+            catch { }
+            _counters.Remove(key);
+        }
+
+        // 2. Initialize new counters
+        foreach (string instanceName in instanceNames)
+        {
+            if (_counters.ContainsKey(instanceName))
+            {
+                continue;
+            }
+
+            try
+            {
+                var newCounter = new PerformanceCounter(CATEGORY_NAME, COUNTER_NAME, instanceName, true);
+                _counters.Add(instanceName, newCounter);
+                newCounter.NextValue();
+            }
+            catch { }
+        }
+
+        if (_counters.Count == 0)
+        {
+            return 0;
+        }
+
+        // 3. Wait for valid sample, then sum all engines
+        Thread.Sleep(SAMPLE_DELAY_MS);
+
+        float total = 0;
+        foreach (var pair in _counters)
+        {
+            try
+            {
+                total += pair.Value.NextValue();
+            }
+            catch { }
+        }
+
+        return total;
+    }
+
+    /// <summary>
+    /// Checks if total GPU utilization exceeds the threshold.
+    /// </summary>
+    public static bool IsGpuActive(float thresholdPercent = ACTIVE_THRESHOLD_PERCENT)
+    {
+        float total = GetTotalUtilization();
+        bool isActive = total > thresholdPercent;
+
+        Log.Information($"[GPU Monitor]: {(isActive ? "Active" : "Inactive")}. Utilization: {total:F1}%.");
+
+        return isActive;
+    }
+}
