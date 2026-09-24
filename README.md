@@ -46,7 +46,7 @@ state change, and logs to `logs/monitor_log.txt` (Serilog, daily rolling).
 ## Installation
 
 1. Download `GamingMonitor-vX.Y.Z-win-x64.zip` from
-   [Releases](https://github.com/dms137/gameMonitor/releases).
+   [Releases](https://github.com/dms137/gamingMonitor/releases).
 2. Extract the archive preserving the folder structure
    (for example into `C:\Tools\GamingMonitor\`), so `assets\GM.ico`
    stays next to `GamingMonitor.exe`.
