@@ -13,6 +13,13 @@ public static partial class Program
             return;
         }
 
+        // Single instance: a second copy exits silently
+        using var instanceMutex = new Mutex(true, @"Local\GamingMonitor_SingleInstance", out bool isFirstInstance);
+        if (!isFirstInstance)
+        {
+            return;
+        }
+
         string? justUpdatedTo = null;
         for (int i = 0; i < args.Length - 1; i++)
         {

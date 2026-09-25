@@ -2,5 +2,7 @@
 {
     Idle,
     Gaming,
-    DownloadingActive
+    Downloading
 }
+
+public record StateSnapshot(AppState State, string Reason, DateTime Since);

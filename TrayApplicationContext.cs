@@ -10,6 +10,8 @@ public class TrayApplicationContext : ApplicationContext
     private SettingsForm? _settingsForm;
     private DateTime _flyoutClosedAt = DateTime.MinValue;
     private volatile bool _updateInProgress;
+    private string _stateReason = "No activity";
+    private DateTime _stateChangedAt = DateTime.Now;
     private readonly string? _justUpdatedTo;
 
     private DualSenseMonitor _dualSenseMonitor = new DualSenseMonitor();
@@ -151,6 +153,14 @@ public class TrayApplicationContext : ApplicationContext
 
             bool isGpuTrulyActive = _gpuInactivityCounter <= GPU_INACTIVITY_THRESHOLD_CYCLES;
 
+            _stateReason = isGamepadTrulyActive
+                ? "Gamepad input"
+                : isGpuTrulyActive
+                    ? $"GPU {GpuMonitor.LastUtilization:F0}%"
+                    : isDownloadTrulyActive
+                        ? "Game download"
+                        : "No activity";
+
             // --- Power Management Logic ---
 
             bool isDisplayControlled;
@@ -165,7 +175,7 @@ public class TrayApplicationContext : ApplicationContext
             {
                 isDisplayControlled = false;
                 isSleepControlled = true;
-                newlyCalculatedState = AppState.DownloadingActive;
+                newlyCalculatedState = AppState.Downloading;
             }
             else
             {
@@ -177,8 +187,9 @@ public class TrayApplicationContext : ApplicationContext
             if (newlyCalculatedState != _currentState)
             {
                 _currentState = newlyCalculatedState;
+                _stateChangedAt = DateTime.Now;
 
-                Log.Information($"[State] New state: {_currentState.ToString()}.");
+                Log.Information($"[State] New state: {_currentState.ToString()} ({_stateReason}).");
 
                 PowerManagement.SetDisplayRequired(isDisplayControlled);
                 PowerManagement.SetSystemRequired(isSleepControlled);
@@ -366,7 +377,7 @@ public class TrayApplicationContext : ApplicationContext
                 return;
             }
 
-            _settingsForm = new SettingsForm(() => _currentState);
+            _settingsForm = new SettingsForm(() => new StateSnapshot(_currentState, _stateReason, _stateChangedAt));
             _settingsForm.FormClosed += (s, e) => _flyoutClosedAt = DateTime.Now;
             _settingsForm.Show();
         }

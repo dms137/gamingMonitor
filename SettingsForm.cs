@@ -1,3 +1,4 @@
+using Microsoft.Win32;
 using Serilog;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -55,24 +56,25 @@ public partial class SettingsForm : Form
     private static readonly Color AccentColor = Color.FromArgb(76, 194, 255);
     private static readonly Color GamingColor = Color.FromArgb(108, 203, 95);
 
-    private readonly Func<AppState> _getState;
+    private readonly Func<StateSnapshot> _getState;
     private readonly TrackBar _thresholdSlider;
     private readonly Label _valueLabel;
     private readonly Label _stateDot;
     private readonly Label _stateLabel;
+    private readonly Label _stateDetail;
     private readonly Label _gpuLoadValue;
     private readonly ToolTip _toolTip;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private LowLevelMouseProc? _mouseHookProc;
     private IntPtr _mouseHook = IntPtr.Zero;
 
-    public SettingsForm(Func<AppState> getState)
+    public SettingsForm(Func<StateSnapshot> getState)
     {
         _getState = getState;
 
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
-        ClientSize = new Size(360, 244);
+        ClientSize = new Size(360, 270);
         BackColor = BgColor;
         ForeColor = TextColor;
         TopMost = true;
@@ -120,9 +122,24 @@ public partial class SettingsForm : Form
         };
         _stateLabel.MouseDown += Header_MouseDown;
 
+        _stateDetail = new Label
+        {
+            // No Anchor.Right here: the header panel has no final width yet
+            // when children are added, so anchoring throws the label off-screen.
+            // The form is not resizable, fixed coordinates are safe.
+            Location = new Point(170, 52),
+            Size = new Size(170, 22),
+            TextAlign = ContentAlignment.MiddleRight,
+            Font = new Font("Segoe UI", 9, FontStyle.Regular),
+            ForeColor = SecondaryColor,
+            BackColor = BgColor
+        };
+        _stateDetail.MouseDown += Header_MouseDown;
+
         header.Controls.Add(titleLabel);
         header.Controls.Add(_stateDot);
         header.Controls.Add(_stateLabel);
+        header.Controls.Add(_stateDetail);
 
         // Current GPU load row
         var gpuCaption = new Label
@@ -240,13 +257,26 @@ public partial class SettingsForm : Form
         closeButton.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 80);
         closeButton.Click += (s, e) => Close();
 
+        var autoStartCheck = new CheckBox
+        {
+            Text = "Start with Windows",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Font = new Font("Segoe UI", 9, FontStyle.Regular),
+            ForeColor = TextColor,
+            BackColor = BgColor,
+            Margin = Padding.Empty,
+            Checked = AutoStart.IsEnabled()
+        };
+        autoStartCheck.CheckedChanged += (s, e) => AutoStart.SetEnabled(autoStartCheck.Checked);
+
         // Body grid: captions on the left, values right-aligned in one column
         var grid = new TableLayoutPanel
         {
             Location = new Point(20, 96),
-            Size = new Size(320, 132),
+            Size = new Size(320, 158),
             ColumnCount = 2,
-            RowCount = 4,
+            RowCount = 5,
             BackColor = BgColor,
             Margin = Padding.Empty,
             Padding = Padding.Empty
@@ -257,6 +287,7 @@ public partial class SettingsForm : Form
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 48f));
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 34f));
+        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 26f));
 
         grid.Controls.Add(gpuCaption, 0, 0);
         grid.Controls.Add(_gpuLoadValue, 1, 0);
@@ -266,6 +297,8 @@ public partial class SettingsForm : Form
         grid.SetColumnSpan(_thresholdSlider, 2);
         grid.Controls.Add(versionLabel, 0, 3);
         grid.Controls.Add(closeButton, 1, 3);
+        grid.Controls.Add(autoStartCheck, 0, 4);
+        grid.SetColumnSpan(autoStartCheck, 2);
 
         Controls.Add(header);
         Controls.Add(grid);
@@ -373,14 +406,15 @@ public partial class SettingsForm : Form
 
     private void UpdateStatus()
     {
-        AppState state = _getState();
-        _stateLabel.Text = state.ToString();
-        _stateDot.ForeColor = state switch
+        StateSnapshot snapshot = _getState();
+        _stateLabel.Text = snapshot.State.ToString();
+        _stateDot.ForeColor = snapshot.State switch
         {
             AppState.Gaming => GamingColor,
-            AppState.DownloadingActive => AccentColor,
+            AppState.Downloading => AccentColor,
             _ => SecondaryColor
         };
+        _stateDetail.Text = $"{snapshot.Reason} · {snapshot.Since:HH:mm}";
 
         _gpuLoadValue.Text = $"{GpuMonitor.LastUtilization:F1}%";
     }
@@ -398,6 +432,63 @@ public partial class SettingsForm : Form
         AppSettings.Save();
         Log.Information($"[Settings] GPU threshold set to {AppSettings.GpuThresholdPercent:F0}%.");
         base.OnFormClosed(e);
+    }
+
+    /// <summary>
+    /// Windows autostart via HKCU Run key.
+    /// </summary>
+    private static class AutoStart
+    {
+        private const string ValueName = "GamingMonitor";
+        private const string RunKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+
+        public static bool IsEnabled()
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(RunKey, false);
+                string? value = key?.GetValue(ValueName) as string;
+                string? exe = Environment.ProcessPath;
+                return !string.IsNullOrEmpty(value) &&
+                    !string.IsNullOrEmpty(exe) &&
+                    value.Trim('"').Equals(exe, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public static void SetEnabled(bool enabled)
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(RunKey, true);
+                if (key == null)
+                {
+                    return;
+                }
+
+                if (enabled)
+                {
+                    string? exe = Environment.ProcessPath;
+                    if (!string.IsNullOrEmpty(exe))
+                    {
+                        key.SetValue(ValueName, $"\"{exe}\"");
+                        Log.Information("[Settings] Autostart enabled.");
+                    }
+                }
+                else
+                {
+                    key.DeleteValue(ValueName, false);
+                    Log.Information("[Settings] Autostart disabled.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[Settings ERROR] Failed to update autostart: {ex.Message}");
+            }
+        }
     }
 
 }

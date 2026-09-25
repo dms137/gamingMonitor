@@ -13,6 +13,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -37,8 +39,27 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path publish/GamingMonitor.exe,publish/assets -DestinationPath GamingMonitor-${{ github.ref_name }}-win-x64.zip
 
+      - name: Build release notes
+        id: notes
+        shell: pwsh
+        run: |
+          $prev = ""
+          try { $prev = git describe --tags --abbrev=0 HEAD^ 2>$null } catch { }
+          if ([string]::IsNullOrWhiteSpace($prev)) {
+            $range = $env:GITHUB_REF_NAME
+            $compare = ""
+          } else {
+            $range = "$prev..$env:GITHUB_REF_NAME"
+            $compare = "**Full Changelog**: https://github.com/dms137/gamingMonitor/compare/$prev...$env:GITHUB_REF_NAME`n`n"
+          }
+          $log = git log $range --pretty=format:'- %s (%h)'
+          $body = "$compare$log"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "body<<EOF" -Encoding utf8
+          Add-Content -Path $env:GITHUB_OUTPUT -Value $body -Encoding utf8
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "EOF" -Encoding utf8
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: GamingMonitor-*.zip
-          generate_release_notes: true
+          body: ${{ steps.notes.outputs.body }}
