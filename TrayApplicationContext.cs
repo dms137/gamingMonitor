@@ -1,10 +1,20 @@
 ﻿using Serilog;
 using System.Diagnostics;
+using System.Drawing.Drawing2D;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 
-public class TrayApplicationContext : ApplicationContext
+public partial class TrayApplicationContext : ApplicationContext
 {
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool DestroyIcon(IntPtr hIcon);
+
+    private static readonly Color GamingDotColor = Color.FromArgb(108, 203, 95);
+    private static readonly Color DownloadingDotColor = Color.FromArgb(76, 194, 255);
+
     private readonly NotifyIcon trayIcon;
+    private readonly Bitmap _baseTrayBitmap;
     private readonly SynchronizationContext? _uiContext;
     private AppState _currentState = AppState.Idle;
     private SettingsForm? _settingsForm;
@@ -38,9 +48,17 @@ public class TrayApplicationContext : ApplicationContext
 
         Log.Information("Application started and configured.");
 
+        string iconPath = Path.Combine(AppContext.BaseDirectory, "assets", "GM.ico");
+        using (var baseIcon = new Icon(iconPath, new Size(32, 32)))
+        {
+            // ToBitmap can return the largest frame (256px), normalize to tray size
+            using var raw = baseIcon.ToBitmap();
+            _baseTrayBitmap = new Bitmap(raw, new Size(32, 32));
+        }
+
         trayIcon = new NotifyIcon()
         {
-            Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "assets", "GM.ico")),
+            Icon = CreateTrayIcon(AppState.Idle),
             ContextMenuStrip = new ContextMenuStrip(),
             Visible = true,
             Text = "Gaming Monitor - Idle"
@@ -87,10 +105,10 @@ public class TrayApplicationContext : ApplicationContext
         {
             NotificationHelper.ShowUpdatedNotification(_justUpdatedTo);
         }
-        else
-        {
-            NotificationHelper.ShowWelcomeNotification();
-        }
+
+        // The first cycle always reports, so startup shows the same
+        // state notification as any other transition.
+        bool firstCycle = true;
         AppState newlyCalculatedState;
         while (true)
         {
@@ -99,8 +117,16 @@ public class TrayApplicationContext : ApplicationContext
                 break;
             }
 
+            // 1-3. Activity checks run concurrently: each one blocks
+            // on hardware/counter sampling, so sequential calls add up.
+            // The monitors own disjoint state, sharing is safe here.
+            Task<bool> gamepadTask = Task.Run(() => _dualSenseMonitor.IsGamepadActive());
+            Task<bool> downloadTask = Task.Run(() => NetworkMonitor.CheckAllDownloads());
+            Task<bool> gpuTask = Task.Run(() => GpuMonitor.IsGpuActive());
+            Task.WaitAll(gamepadTask, downloadTask, gpuTask);
+
             // 1. Gamepad activity check and counter
-            bool isInputDetectedThisCycle = _dualSenseMonitor.IsGamepadActive();
+            bool isInputDetectedThisCycle = gamepadTask.Result;
 
             if (isInputDetectedThisCycle)
             {
@@ -118,7 +144,7 @@ public class TrayApplicationContext : ApplicationContext
             bool isGamepadTrulyActive = _gamepadInactivityCounter <= INACTIVITY_THRESHOLD_CYCLES;
 
             // 2. Download activity check
-            bool isDownloadingThisCycle = NetworkMonitor.CheckAllDownloads();
+            bool isDownloadingThisCycle = downloadTask.Result;
 
             if (isDownloadingThisCycle)
             {
@@ -136,7 +162,7 @@ public class TrayApplicationContext : ApplicationContext
             bool isDownloadTrulyActive = _downloadInactivityCounter <= DOWNLOAD_INACTIVITY_THRESHOLD_CYCLES;
 
             // 3. GPU activity check
-            bool isGpuThisCycle = GpuMonitor.IsGpuActive();
+            bool isGpuThisCycle = gpuTask.Result;
 
             if (isGpuThisCycle)
             {
@@ -184,8 +210,9 @@ public class TrayApplicationContext : ApplicationContext
                 newlyCalculatedState = AppState.Idle;
             }
 
-            if (newlyCalculatedState != _currentState)
+            if (firstCycle || newlyCalculatedState != _currentState)
             {
+                firstCycle = false;
                 _currentState = newlyCalculatedState;
                 _stateChangedAt = DateTime.Now;
 
@@ -200,12 +227,57 @@ public class TrayApplicationContext : ApplicationContext
         }
     }
 
+    /// <summary>
+    /// Builds a tray icon from the base image with a Teams-like presence dot.
+    /// </summary>
+    private Icon CreateTrayIcon(AppState state)
+    {
+        Color? dot = state switch
+        {
+            AppState.Gaming => GamingDotColor,
+            AppState.Downloading => DownloadingDotColor,
+            _ => null
+        };
+
+        using var bitmap = new Bitmap(_baseTrayBitmap);
+        if (dot != null)
+        {
+            using var graphics = Graphics.FromImage(bitmap);
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            const int diameter = 16;
+            const int ring = 2;
+            int x = bitmap.Width - diameter;
+            int y = bitmap.Height - diameter;
+            graphics.FillEllipse(Brushes.Black, x, y, diameter, diameter);
+            using var brush = new SolidBrush(dot.Value);
+            graphics.FillEllipse(brush, x + ring, y + ring, diameter - ring * 2, diameter - ring * 2);
+        }
+
+        IntPtr handle = bitmap.GetHicon();
+        try
+        {
+            return (Icon)Icon.FromHandle(handle).Clone();
+        }
+        finally
+        {
+            DestroyIcon(handle);
+        }
+    }
+
+    private void SetTrayIcon(AppState state)
+    {
+        Icon? old = trayIcon.Icon;
+        trayIcon.Icon = CreateTrayIcon(state);
+        old?.Dispose();
+    }
+
     private void UpdateUIAndSystemState(bool isDisplayControlled, bool isSleepControlled)
     {
         // Called from the background monitor thread, marshal UI work to the UI thread
         void apply()
         {
             trayIcon.Text = $"Gaming Monitor - {_currentState}";
+            SetTrayIcon(_currentState);
 
             var menu = trayIcon.ContextMenuStrip;
             if (menu != null && menu.Items.Count > 0)
@@ -213,7 +285,7 @@ public class TrayApplicationContext : ApplicationContext
                 menu.Items[0].Text = $"State: {_currentState}";
             }
 
-            NotificationHelper.ShowStateChangeNotification(_currentState.ToString(), isDisplayControlled, isSleepControlled);
+            NotificationHelper.ShowStateChangeNotification(_currentState.ToString(), _stateReason, isDisplayControlled, isSleepControlled);
         }
 
         if (_uiContext != null)
@@ -408,6 +480,9 @@ public class TrayApplicationContext : ApplicationContext
         Log.CloseAndFlush();
 
         trayIcon.Visible = false;
+        trayIcon.Icon?.Dispose();
+        trayIcon.Dispose();
+        _baseTrayBitmap.Dispose();
         Application.Exit();
     }
 }

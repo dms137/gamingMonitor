@@ -50,8 +50,8 @@ state change, and logs to `logs/monitor_log.txt` (Serilog, daily rolling).
 2. Extract the archive preserving the folder structure
    (for example into `C:\Tools\GamingMonitor\`), so `assets\GM.ico`
    stays next to `GamingMonitor.exe`.
-3. Run `GamingMonitor.exe`. For autostart, place a shortcut to it in
-   `shell:startup`.
+3. Run `GamingMonitor.exe`. For autostart, tick `Start with Windows`
+   in the settings flyout (left-click the tray icon).
 
 ## Build from source
 

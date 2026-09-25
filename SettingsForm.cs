@@ -330,14 +330,30 @@ public partial class SettingsForm : Form
         var area = Screen.FromPoint(Cursor.Position).WorkingArea;
         Location = new Point(area.Right - Width - 16, area.Bottom - Height - 16);
 
-        IntPtr region = CreateRoundRectRgn(0, 0, Width + 1, Height + 1, 12, 12);
-        Region?.Dispose();
-        Region = Region.FromHrgn(region);
-        DeleteObject(region);
+        ApplyRoundedCorners();
 
         // Dismiss when clicking anywhere outside the flyout
         _mouseHookProc = MouseHookCallback;
         _mouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseHookProc, GetModuleHandle(null), 0);
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        ApplyRoundedCorners();
+    }
+
+    private void ApplyRoundedCorners()
+    {
+        if (Width <= 0 || Height <= 0)
+        {
+            return;
+        }
+
+        IntPtr region = CreateRoundRectRgn(0, 0, Width + 1, Height + 1, 12, 12);
+        Region?.Dispose();
+        Region = Region.FromHrgn(region);
+        DeleteObject(region);
     }
 
     private IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)

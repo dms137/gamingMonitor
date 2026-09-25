@@ -1,4 +1,4 @@
-﻿using Microsoft.Toolkit.Uwp.Notifications;
+using Microsoft.Toolkit.Uwp.Notifications;
 using Serilog;
 using System.Runtime.InteropServices;
 
@@ -19,21 +19,6 @@ public static class NotificationHelper
         return builder
             .AddText($"Display shutdown: {displayString}allowed")
             .AddText($"Sleep: {sleepString}allowed");
-    }
-
-    public static void ShowWelcomeNotification()
-    {
-        try
-        {
-            new ToastContentBuilder()
-                .AddText("Game monitor is up & running")
-                .SetToastDuration(ToastDuration.Short)
-                .Show();
-        }
-        catch (Exception ex)
-        {
-            Log.Error($"[Notification ERROR] Failed to show toast: {ex.Message}");
-        }
     }
 
     /// <summary>
@@ -146,12 +131,14 @@ public static class NotificationHelper
     /// Sends a Windows toast notification about state change.
     /// </summary>
     /// <param name="newState">New application state (e.g., "Gaming" or "Idle").</param>
-    public static void ShowStateChangeNotification(string newState, bool isDisplayControlled, bool isSleepControlled)
+    public static void ShowStateChangeNotification(string newState, string reason, bool isDisplayControlled, bool isSleepControlled)
     {
         try
         {
+            // Toasts allow 3 text lines max and no colored text,
+            // so the reason shares the plain title line.
             new ToastContentBuilder()
-                .AddText($"{newState}")
+                .AddText($"{newState} ({reason})")
                 .AppendStatus(isDisplayControlled, isSleepControlled)
                 .SetToastDuration(ToastDuration.Short)
                 .Show();
