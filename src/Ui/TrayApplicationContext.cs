@@ -1,42 +1,22 @@
-﻿using Serilog;
+namespace GamingMonitor.Ui;
+
+using GamingMonitor.Infrastructure;
+using GamingMonitor.Monitors;
+using GamingMonitor.Updating;
+using Serilog;
 using System.Diagnostics;
-using System.Drawing.Drawing2D;
 using System.IO.Compression;
-using System.Runtime.InteropServices;
 
-public partial class TrayApplicationContext : ApplicationContext
+public class TrayApplicationContext : ApplicationContext
 {
-    [LibraryImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool DestroyIcon(IntPtr hIcon);
-
-    private static readonly Color GamingDotColor = Color.FromArgb(108, 203, 95);
-    private static readonly Color DownloadingDotColor = Color.FromArgb(76, 194, 255);
-
     private readonly NotifyIcon trayIcon;
     private readonly Bitmap _baseTrayBitmap;
     private readonly SynchronizationContext? _uiContext;
-    private AppState _currentState = AppState.Idle;
+    private readonly ActivityEngine _engine = new ActivityEngine();
     private SettingsForm? _settingsForm;
     private DateTime _flyoutClosedAt = DateTime.MinValue;
     private volatile bool _updateInProgress;
-    private string _stateReason = "No activity";
-    private DateTime _stateChangedAt = DateTime.Now;
     private readonly string? _justUpdatedTo;
-
-    private DualSenseMonitor _dualSenseMonitor = new DualSenseMonitor();
-    private static volatile bool _isShuttingDown = false;
-
-    private const int INACTIVITY_THRESHOLD_CYCLES = 30;
-    private static int _gamepadInactivityCounter = INACTIVITY_THRESHOLD_CYCLES;
-
-    private const int DOWNLOAD_INACTIVITY_THRESHOLD_CYCLES = 10;
-    private static int _downloadInactivityCounter = DOWNLOAD_INACTIVITY_THRESHOLD_CYCLES;
-
-    private const int GPU_INACTIVITY_THRESHOLD_CYCLES = 10;
-    private static int _gpuInactivityCounter = GPU_INACTIVITY_THRESHOLD_CYCLES;
-
-    private const int CHECK_INTERVAL_MS = 10000;
 
     public TrayApplicationContext(string? justUpdatedTo = null)
     {
@@ -58,24 +38,18 @@ public partial class TrayApplicationContext : ApplicationContext
 
         trayIcon = new NotifyIcon()
         {
-            Icon = CreateTrayIcon(AppState.Idle),
+            Icon = TrayIconFactory.Create(AppState.Idle, _baseTrayBitmap),
             ContextMenuStrip = new ContextMenuStrip(),
             Visible = true,
             Text = "Gaming Monitor - Idle"
         };
         trayIcon.MouseClick += TrayIcon_MouseClick;
 
-        ToolStripMenuItem stateItem = new ToolStripMenuItem($"Current state: {_currentState}")
-        {
-            Enabled = false
-        };
-
+        ToolStripMenuItem stateItem = new ToolStripMenuItem(_engine.CurrentState.ToString());
+        stateItem.Click += (s, e) => ToggleSettings();
         trayIcon.ContextMenuStrip.Items.Add(stateItem);
 
         trayIcon.ContextMenuStrip.Items.Add(new ToolStripSeparator());
-
-        ToolStripMenuItem settingsItem = new ToolStripMenuItem("Settings", null, Settings_Click);
-        trayIcon.ContextMenuStrip.Items.Add(settingsItem);
 
         ToolStripMenuItem updateItem = new ToolStripMenuItem("Check for updates", null, CheckUpdates_Click);
         trayIcon.ContextMenuStrip.Items.Add(updateItem);
@@ -88,204 +62,45 @@ public partial class TrayApplicationContext : ApplicationContext
         };
         trayIcon.ContextMenuStrip.Items.Add(exitItem);
 
-        // Capture UI thread context, monitor loop runs on a background thread
+        // Capture UI thread context, the engine loop runs on a background thread
         _uiContext = SynchronizationContext.Current;
 
-        Thread mainThread = new Thread(MainCheckLoop);
-        mainThread.IsBackground = true;
-        mainThread.Start();
-
-        // Fire-and-forget update check, must not block startup
-        _ = Task.Run(() => UpdateChecker.CheckOnStartupAsync());
-    }
-
-    private void MainCheckLoop()
-    {
         if (_justUpdatedTo != null)
         {
             NotificationHelper.ShowUpdatedNotification(_justUpdatedTo);
         }
 
-        // The first cycle always reports, so startup shows the same
-        // state notification as any other transition.
-        bool firstCycle = true;
-        AppState newlyCalculatedState;
-        while (true)
-        {
-            if (_isShuttingDown)
-            {
-                break;
-            }
+        _engine.StateChanged += OnEngineStateChanged;
+        _engine.Start();
 
-            // 1-3. Activity checks run concurrently: each one blocks
-            // on hardware/counter sampling, so sequential calls add up.
-            // The monitors own disjoint state, sharing is safe here.
-            Task<bool> gamepadTask = Task.Run(() => _dualSenseMonitor.IsGamepadActive());
-            Task<bool> downloadTask = Task.Run(() => NetworkMonitor.CheckAllDownloads());
-            Task<bool> gpuTask = Task.Run(() => GpuMonitor.IsGpuActive());
-            Task.WaitAll(gamepadTask, downloadTask, gpuTask);
-
-            // 1. Gamepad activity check and counter
-            bool isInputDetectedThisCycle = gamepadTask.Result;
-
-            if (isInputDetectedThisCycle)
-            {
-                _gamepadInactivityCounter = 0;
-            }
-            else
-            {
-                _gamepadInactivityCounter++;
-                if (_gamepadInactivityCounter > INACTIVITY_THRESHOLD_CYCLES)
-                {
-                    _gamepadInactivityCounter = INACTIVITY_THRESHOLD_CYCLES + 1;
-                }
-            }
-
-            bool isGamepadTrulyActive = _gamepadInactivityCounter <= INACTIVITY_THRESHOLD_CYCLES;
-
-            // 2. Download activity check
-            bool isDownloadingThisCycle = downloadTask.Result;
-
-            if (isDownloadingThisCycle)
-            {
-                _downloadInactivityCounter = 0;
-            }
-            else
-            {
-                _downloadInactivityCounter++;
-                if (_downloadInactivityCounter > DOWNLOAD_INACTIVITY_THRESHOLD_CYCLES)
-                {
-                    _downloadInactivityCounter = DOWNLOAD_INACTIVITY_THRESHOLD_CYCLES + 1;
-                }
-            }
-
-            bool isDownloadTrulyActive = _downloadInactivityCounter <= DOWNLOAD_INACTIVITY_THRESHOLD_CYCLES;
-
-            // 3. GPU activity check
-            bool isGpuThisCycle = gpuTask.Result;
-
-            if (isGpuThisCycle)
-            {
-                _gpuInactivityCounter = 0;
-            }
-            else
-            {
-                _gpuInactivityCounter++;
-                if (_gpuInactivityCounter > GPU_INACTIVITY_THRESHOLD_CYCLES)
-                {
-                    _gpuInactivityCounter = GPU_INACTIVITY_THRESHOLD_CYCLES + 1;
-                }
-            }
-
-            bool isGpuTrulyActive = _gpuInactivityCounter <= GPU_INACTIVITY_THRESHOLD_CYCLES;
-
-            _stateReason = isGamepadTrulyActive
-                ? "Gamepad input"
-                : isGpuTrulyActive
-                    ? $"GPU {GpuMonitor.LastUtilization:F0}%"
-                    : isDownloadTrulyActive
-                        ? "Game download"
-                        : "No activity";
-
-            // --- Power Management Logic ---
-
-            bool isDisplayControlled;
-            bool isSleepControlled;
-            if (isGamepadTrulyActive || isGpuTrulyActive)
-            {
-                isDisplayControlled = true;
-                isSleepControlled = true;
-                newlyCalculatedState = AppState.Gaming;
-            }
-            else if (isDownloadTrulyActive)
-            {
-                isDisplayControlled = false;
-                isSleepControlled = true;
-                newlyCalculatedState = AppState.Downloading;
-            }
-            else
-            {
-                isDisplayControlled = false;
-                isSleepControlled = false;
-                newlyCalculatedState = AppState.Idle;
-            }
-
-            if (firstCycle || newlyCalculatedState != _currentState)
-            {
-                firstCycle = false;
-                _currentState = newlyCalculatedState;
-                _stateChangedAt = DateTime.Now;
-
-                Log.Information($"[State] New state: {_currentState.ToString()} ({_stateReason}).");
-
-                PowerManagement.SetDisplayRequired(isDisplayControlled);
-                PowerManagement.SetSystemRequired(isSleepControlled);
-
-                UpdateUIAndSystemState(isDisplayControlled, isSleepControlled);
-            }
-            Thread.Sleep(CHECK_INTERVAL_MS);
-        }
-    }
-
-    /// <summary>
-    /// Builds a tray icon from the base image with a Teams-like presence dot.
-    /// </summary>
-    private Icon CreateTrayIcon(AppState state)
-    {
-        Color? dot = state switch
-        {
-            AppState.Gaming => GamingDotColor,
-            AppState.Downloading => DownloadingDotColor,
-            _ => null
-        };
-
-        using var bitmap = new Bitmap(_baseTrayBitmap);
-        if (dot != null)
-        {
-            using var graphics = Graphics.FromImage(bitmap);
-            graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            const int diameter = 16;
-            const int ring = 2;
-            int x = bitmap.Width - diameter;
-            int y = bitmap.Height - diameter;
-            graphics.FillEllipse(Brushes.Black, x, y, diameter, diameter);
-            using var brush = new SolidBrush(dot.Value);
-            graphics.FillEllipse(brush, x + ring, y + ring, diameter - ring * 2, diameter - ring * 2);
-        }
-
-        IntPtr handle = bitmap.GetHicon();
-        try
-        {
-            return (Icon)Icon.FromHandle(handle).Clone();
-        }
-        finally
-        {
-            DestroyIcon(handle);
-        }
+        // Fire-and-forget update check, must not block startup
+        _ = Task.Run(() => UpdateChecker.CheckOnStartupAsync());
     }
 
     private void SetTrayIcon(AppState state)
     {
         Icon? old = trayIcon.Icon;
-        trayIcon.Icon = CreateTrayIcon(state);
+        trayIcon.Icon = TrayIconFactory.Create(state, _baseTrayBitmap);
         old?.Dispose();
     }
 
-    private void UpdateUIAndSystemState(bool isDisplayControlled, bool isSleepControlled)
+    private void OnEngineStateChanged()
     {
-        // Called from the background monitor thread, marshal UI work to the UI thread
+        // Called on the engine worker thread, marshal UI work to the UI thread
         void apply()
         {
-            trayIcon.Text = $"Gaming Monitor - {_currentState}";
-            SetTrayIcon(_currentState);
+            trayIcon.Text = $"Gaming Monitor - {_engine.CurrentState}";
+            SetTrayIcon(_engine.CurrentState);
 
             var menu = trayIcon.ContextMenuStrip;
             if (menu != null && menu.Items.Count > 0)
             {
-                menu.Items[0].Text = $"State: {_currentState}";
+                menu.Items[0].Text = _engine.CurrentState.ToString();
             }
 
-            NotificationHelper.ShowStateChangeNotification(_currentState.ToString(), _stateReason, isDisplayControlled, isSleepControlled);
+            NotificationHelper.ShowStateChangeNotification(
+                _engine.CurrentState.ToString(), _engine.Reason,
+                _engine.IsDisplayControlled, _engine.IsSleepControlled);
         }
 
         if (_uiContext != null)
@@ -304,11 +119,6 @@ public partial class TrayApplicationContext : ApplicationContext
         {
             ToggleSettings();
         }
-    }
-
-    private void Settings_Click(object? sender, EventArgs e)
-    {
-        ToggleSettings();
     }
 
     private void CheckUpdates_Click(object? sender, EventArgs e)
@@ -449,7 +259,7 @@ public partial class TrayApplicationContext : ApplicationContext
                 return;
             }
 
-            _settingsForm = new SettingsForm(() => new StateSnapshot(_currentState, _stateReason, _stateChangedAt));
+            _settingsForm = new SettingsForm(() => new StateSnapshot(_engine.CurrentState, _engine.Reason, _engine.ChangedAt, _engine.GpuUtilization));
             _settingsForm.FormClosed += (s, e) => _flyoutClosedAt = DateTime.Now;
             _settingsForm.Show();
         }
@@ -470,12 +280,11 @@ public partial class TrayApplicationContext : ApplicationContext
     /// </summary>
     private void Shutdown(string reason)
     {
-        _isShuttingDown = true;
+        _engine.Dispose();
 
         Log.Information($"{reason} Releasing power requests...");
         PowerManagement.SetDisplayRequired(false);
         PowerManagement.SetSystemRequired(false);
-        _dualSenseMonitor.Dispose();
         Log.Information("----------------------------");
         Log.CloseAndFlush();
 

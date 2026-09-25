@@ -1,4 +1,9 @@
-﻿using Microsoft.Toolkit.Uwp.Notifications;
+namespace GamingMonitor;
+
+using GamingMonitor.Infrastructure;
+using GamingMonitor.Ui;
+using GamingMonitor.Updating;
+using Microsoft.Toolkit.Uwp.Notifications;
 using System.Diagnostics;
 
 public static partial class Program

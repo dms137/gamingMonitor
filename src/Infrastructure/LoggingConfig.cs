@@ -1,4 +1,6 @@
-﻿using Serilog;
+namespace GamingMonitor.Infrastructure;
+
+using Serilog;
 
 public static class LoggingConfig
 {

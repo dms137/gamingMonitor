@@ -1,4 +1,6 @@
-﻿using Serilog;
+namespace GamingMonitor.Infrastructure;
+
+using Serilog;
 using System.Runtime.InteropServices;
 public static partial class PowerManagement
 {

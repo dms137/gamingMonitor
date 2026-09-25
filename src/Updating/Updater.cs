@@ -1,3 +1,5 @@
+namespace GamingMonitor.Updating;
+
 using System.Diagnostics;
 
 /// <summary>

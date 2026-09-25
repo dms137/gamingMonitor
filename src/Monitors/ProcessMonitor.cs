@@ -1,4 +1,6 @@
-﻿using System.Diagnostics;
+namespace GamingMonitor.Monitors;
+
+using System.Diagnostics;
 
 public class ProcessMonitor
 {

@@ -1,3 +1,5 @@
+namespace GamingMonitor.Infrastructure;
+
 using Microsoft.Toolkit.Uwp.Notifications;
 using Serilog;
 using System.Runtime.InteropServices;
@@ -14,11 +16,11 @@ public static class NotificationHelper
 {
     private static ToastContentBuilder AppendStatus(this ToastContentBuilder builder, bool isDisplayControlled, bool isSleepControlled)
     {
-        string displayString = isDisplayControlled ? "not " : "";
-        string sleepString = isSleepControlled ? "not " : "";
+        string displayString = isDisplayControlled ? "always on" : "can turn off";
+        string sleepString = isSleepControlled ? "blocked" : "allowed";
         return builder
-            .AddText($"Display shutdown: {displayString}allowed")
-            .AddText($"Sleep: {sleepString}allowed");
+            .AddText($"Display: {displayString}")
+            .AddText($"Sleep: {sleepString}");
     }
 
     /// <summary>

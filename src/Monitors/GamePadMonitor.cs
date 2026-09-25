@@ -1,4 +1,6 @@
-﻿using Serilog;
+namespace GamingMonitor.Monitors;
+
+using Serilog;
 using System.Text;
 using Windows.Gaming.Input;
 

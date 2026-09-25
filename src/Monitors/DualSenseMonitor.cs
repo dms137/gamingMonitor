@@ -1,7 +1,9 @@
-﻿using HidSharp;
+namespace GamingMonitor.Monitors;
+
+using HidSharp;
 using Serilog;
 
-public class DualSenseMonitor : IDisposable
+public class DualSenseMonitor : IDisposable, IActivityMonitor
 {
     private const int DualSenseVID = 0x054C;
     private const int DualSensePID = 0x0CE6;
@@ -17,6 +19,12 @@ public class DualSenseMonitor : IDisposable
     {
         InitializeDualSense();
     }
+
+    public AppState ActiveState => AppState.Gaming;
+
+    public bool CheckActive() => IsGamepadActive();
+
+    public string DescribeActive() => "Gamepad input";
 
     /// <summary>
     /// Finds DualSense by VID/PID and opens read stream.
@@ -58,7 +66,10 @@ public class DualSenseMonitor : IDisposable
         if (_dualSenseStream == null)
         {
             InitializeDualSense();
-            if (_dualSenseStream == null) return false;
+            if (_dualSenseStream == null)
+            {
+                return false;
+            }
         }
 
         try

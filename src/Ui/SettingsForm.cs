@@ -1,3 +1,6 @@
+namespace GamingMonitor.Ui;
+
+using GamingMonitor.Infrastructure;
 using Microsoft.Win32;
 using Serilog;
 using System.Reflection;
@@ -5,50 +8,6 @@ using System.Runtime.InteropServices;
 
 public partial class SettingsForm : Form
 {
-    private const int WM_NCLBUTTONDOWN = 0xA1;
-    private const int HTCAPTION = 0x2;
-
-    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
-    private static partial IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
-
-    [LibraryImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool ReleaseCapture();
-
-    [LibraryImport("gdi32.dll")]
-    private static partial IntPtr CreateRoundRectRgn(int x1, int y1, int x2, int y2, int cx, int cy);
-
-    [LibraryImport("gdi32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool DeleteObject(IntPtr hObject);
-
-    private const int WH_MOUSE_LL = 14;
-    private const int WM_LBUTTONDOWN = 0x0201;
-    private const int WM_RBUTTONDOWN = 0x0204;
-    private const int WM_MBUTTONDOWN = 0x0207;
-
-    [LibraryImport("user32.dll", EntryPoint = "SetWindowsHookExW")]
-    private static partial IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hmod, uint dwThreadId);
-
-    [LibraryImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool UnhookWindowsHookEx(IntPtr hhk);
-
-    [LibraryImport("user32.dll", EntryPoint = "CallNextHookEx")]
-    private static partial IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
-
-    [LibraryImport("kernel32.dll", EntryPoint = "GetModuleHandleW", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial IntPtr GetModuleHandle(string? lpModuleName);
-
-    private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct POINT
-    {
-        public int X;
-        public int Y;
-    }
-
     private static readonly Color BgColor = Color.FromArgb(32, 32, 32);
     private static readonly Color PanelColor = Color.FromArgb(45, 45, 45);
     private static readonly Color TextColor = Color.FromArgb(243, 243, 243);
@@ -65,7 +24,7 @@ public partial class SettingsForm : Form
     private readonly Label _gpuLoadValue;
     private readonly ToolTip _toolTip;
     private readonly System.Windows.Forms.Timer _refreshTimer;
-    private LowLevelMouseProc? _mouseHookProc;
+    private NativeMethods.LowLevelMouseProc? _mouseHookProc;
     private IntPtr _mouseHook = IntPtr.Zero;
 
     public SettingsForm(Func<StateSnapshot> getState)
@@ -90,10 +49,21 @@ public partial class SettingsForm : Form
         };
         header.MouseDown += Header_MouseDown;
 
+        _stateDot = new Label
+        {
+            Text = "●",
+            Location = new Point(20, 14),
+            AutoSize = true,
+            Font = new Font("Segoe UI", 15, FontStyle.Regular),
+            ForeColor = SecondaryColor,
+            BackColor = BgColor
+        };
+        _stateDot.MouseDown += Header_MouseDown;
+
         var titleLabel = new Label
         {
             Text = "Gaming Monitor",
-            Location = new Point(20, 12),
+            Location = new Point(44, 12),
             AutoSize = true,
             Font = new Font("Segoe UI", 15, FontStyle.Bold),
             ForeColor = TextColor,
@@ -101,20 +71,9 @@ public partial class SettingsForm : Form
         };
         titleLabel.MouseDown += Header_MouseDown;
 
-        _stateDot = new Label
-        {
-            Text = "●",
-            Location = new Point(20, 50),
-            AutoSize = true,
-            Font = new Font("Segoe UI", 12, FontStyle.Regular),
-            ForeColor = SecondaryColor,
-            BackColor = BgColor
-        };
-        _stateDot.MouseDown += Header_MouseDown;
-
         _stateLabel = new Label
         {
-            Location = new Point(42, 52),
+            Location = new Point(20, 52),
             AutoSize = true,
             Font = new Font("Segoe UI", 11, FontStyle.Regular),
             ForeColor = TextColor,
@@ -286,8 +245,8 @@ public partial class SettingsForm : Form
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 48f));
-        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 34f));
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 26f));
+        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 34f));
 
         grid.Controls.Add(gpuCaption, 0, 0);
         grid.Controls.Add(_gpuLoadValue, 1, 0);
@@ -295,10 +254,10 @@ public partial class SettingsForm : Form
         grid.Controls.Add(_valueLabel, 1, 1);
         grid.Controls.Add(_thresholdSlider, 0, 2);
         grid.SetColumnSpan(_thresholdSlider, 2);
-        grid.Controls.Add(versionLabel, 0, 3);
-        grid.Controls.Add(closeButton, 1, 3);
-        grid.Controls.Add(autoStartCheck, 0, 4);
+        grid.Controls.Add(autoStartCheck, 0, 3);
         grid.SetColumnSpan(autoStartCheck, 2);
+        grid.Controls.Add(versionLabel, 0, 4);
+        grid.Controls.Add(closeButton, 1, 4);
 
         Controls.Add(header);
         Controls.Add(grid);
@@ -334,7 +293,7 @@ public partial class SettingsForm : Form
 
         // Dismiss when clicking anywhere outside the flyout
         _mouseHookProc = MouseHookCallback;
-        _mouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseHookProc, GetModuleHandle(null), 0);
+        _mouseHook = NativeMethods.SetWindowsHookEx(NativeMethods.WH_MOUSE_LL, _mouseHookProc, NativeMethods.GetModuleHandle(null), 0);
     }
 
     protected override void OnResize(EventArgs e)
@@ -350,25 +309,25 @@ public partial class SettingsForm : Form
             return;
         }
 
-        IntPtr region = CreateRoundRectRgn(0, 0, Width + 1, Height + 1, 12, 12);
+        IntPtr region = NativeMethods.CreateRoundRectRgn(0, 0, Width + 1, Height + 1, 12, 12);
         Region?.Dispose();
         Region = Region.FromHrgn(region);
-        DeleteObject(region);
+        NativeMethods.DeleteObject(region);
     }
 
     private IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0 && !IsDisposed &&
-            (wParam == (IntPtr)WM_LBUTTONDOWN || wParam == (IntPtr)WM_RBUTTONDOWN || wParam == (IntPtr)WM_MBUTTONDOWN))
+            (wParam == (IntPtr)NativeMethods.WM_LBUTTONDOWN || wParam == (IntPtr)NativeMethods.WM_RBUTTONDOWN || wParam == (IntPtr)NativeMethods.WM_MBUTTONDOWN))
         {
-            POINT pt = Marshal.PtrToStructure<POINT>(lParam);
+            NativeMethods.POINT pt = Marshal.PtrToStructure<NativeMethods.POINT>(lParam);
             if (!Bounds.Contains(pt.X, pt.Y))
             {
                 BeginInvoke(Close);
             }
         }
 
-        return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+        return NativeMethods.CallNextHookEx(_mouseHook, nCode, wParam, lParam);
     }
 
     protected override void OnDeactivate(EventArgs e)
@@ -391,8 +350,8 @@ public partial class SettingsForm : Form
     {
         if (e.Button == MouseButtons.Left)
         {
-            ReleaseCapture();
-            SendMessage(Handle, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+            NativeMethods.ReleaseCapture();
+            NativeMethods.SendMessage(Handle, NativeMethods.WM_NCLBUTTONDOWN, NativeMethods.HTCAPTION, 0);
         }
     }
 
@@ -432,14 +391,14 @@ public partial class SettingsForm : Form
         };
         _stateDetail.Text = $"{snapshot.Reason} · {snapshot.Since:HH:mm}";
 
-        _gpuLoadValue.Text = $"{GpuMonitor.LastUtilization:F1}%";
+        _gpuLoadValue.Text = $"{snapshot.GpuUtilization:F1}%";
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         if (_mouseHook != IntPtr.Zero)
         {
-            UnhookWindowsHookEx(_mouseHook);
+            NativeMethods.UnhookWindowsHookEx(_mouseHook);
             _mouseHook = IntPtr.Zero;
         }
 

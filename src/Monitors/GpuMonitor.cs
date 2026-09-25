@@ -1,24 +1,33 @@
+namespace GamingMonitor.Monitors;
+
+using GamingMonitor.Infrastructure;
 using Serilog;
 using System.Diagnostics;
 
-public static class GpuMonitor
+public class GpuMonitor : IActivityMonitor
 {
     private const string CATEGORY_NAME = "GPU Engine";
     private const string COUNTER_NAME = "Utilization Percentage";
     private const int SAMPLE_DELAY_MS = 1000;
 
-    private static readonly PerformanceCounterCategory _category = new PerformanceCounterCategory(CATEGORY_NAME);
-    private static readonly Dictionary<string, PerformanceCounter> _counters = new Dictionary<string, PerformanceCounter>();
+    private readonly PerformanceCounterCategory _category = new PerformanceCounterCategory(CATEGORY_NAME);
+    private readonly Dictionary<string, PerformanceCounter> _counters = new Dictionary<string, PerformanceCounter>();
+
+    public AppState ActiveState => AppState.Gaming;
 
     /// <summary>
     /// Last measured total GPU utilization. Updated on every check cycle.
     /// </summary>
-    public static float LastUtilization { get; private set; }
+    public float LastUtilization { get; private set; }
+
+    public bool CheckActive() => IsGpuActive();
+
+    public string DescribeActive() => $"GPU {LastUtilization:F0}%";
 
     /// <summary>
     /// Returns total GPU utilization across all engines.
     /// </summary>
-    public static float GetTotalUtilization()
+    public float GetTotalUtilization()
     {
         string[] instanceNames;
 
@@ -93,7 +102,7 @@ public static class GpuMonitor
     /// <summary>
     /// Checks if total GPU utilization exceeds the threshold.
     /// </summary>
-    public static bool IsGpuActive(float? thresholdPercent = null)
+    public bool IsGpuActive(float? thresholdPercent = null)
     {
         float threshold = thresholdPercent ?? AppSettings.GpuThresholdPercent;
         float total = GetTotalUtilization();

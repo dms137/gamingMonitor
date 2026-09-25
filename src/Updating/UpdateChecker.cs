@@ -1,3 +1,6 @@
+namespace GamingMonitor.Updating;
+
+using GamingMonitor.Infrastructure;
 using Serilog;
 using System.Reflection;
 using System.Text.Json;

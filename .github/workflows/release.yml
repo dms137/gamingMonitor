@@ -27,7 +27,7 @@ jobs:
 
       - name: Publish self-contained single-file build
         run: >
-          dotnet publish GamingMonitor.csproj -c Release -r win-x64
+          dotnet publish src/GamingMonitor.csproj -c Release -r win-x64
           --self-contained true
           -p:Version=${{ env.APP_VERSION }}
           -p:PublishSingleFile=true
