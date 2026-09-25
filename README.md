@@ -17,7 +17,7 @@ brief network dip does not immediately drop the system back to idle.
 | State | Trigger | Display sleep | System sleep |
 |---|---|---|---|
 | `Gaming` | Gamepad input (DualSense via HID) or GPU load > 25% | Blocked | Blocked |
-| `DownloadingActive` | Steam / Xbox download rate > ~10 Mbps | Allowed | Blocked |
+| `Downloading` | Steam / Xbox download rate > ~10 Mbps | Allowed | Blocked |
 | `Idle` | None of the above | Allowed | Allowed |
 
 Power requests are applied through `SetThreadExecutionState` and only when the
