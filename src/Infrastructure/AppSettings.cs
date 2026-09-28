@@ -22,6 +22,7 @@ public static class AppSettings
     private static readonly string _settingsPath = Path.Combine(AppContext.BaseDirectory, "assets", "settings.json");
 
     private static float _gpuThresholdPercent = DefaultGpuThresholdPercent;
+    private static bool _showStateNotifications = true;
     private static int _checkIntervalMs = DefaultCheckIntervalMs;
     private static int _gamepadInactivityCycles = DefaultGamepadInactivityCycles;
     private static int _downloadInactivityCycles = DefaultDownloadInactivityCycles;
@@ -31,6 +32,12 @@ public static class AppSettings
     {
         get => _gpuThresholdPercent;
         set => _gpuThresholdPercent = Math.Clamp(value, MinGpuThresholdPercent, MaxGpuThresholdPercent);
+    }
+
+    public static bool ShowStateNotifications
+    {
+        get => _showStateNotifications;
+        set => _showStateNotifications = value;
     }
 
     public static int CheckIntervalMs
@@ -74,6 +81,7 @@ public static class AppSettings
             if (data != null)
             {
                 GpuThresholdPercent = data.GpuThresholdPercent;
+                ShowStateNotifications = data.ShowStateNotifications;
                 CheckIntervalMs = data.CheckIntervalMs;
                 GamepadInactivityCycles = data.GamepadInactivityCycles;
                 DownloadInactivityCycles = data.DownloadInactivityCycles;
@@ -98,6 +106,7 @@ public static class AppSettings
     public static void Reload()
     {
         float oldThreshold = GpuThresholdPercent;
+        bool oldNotifications = ShowStateNotifications;
         int oldInterval = CheckIntervalMs;
         int oldGamepad = GamepadInactivityCycles;
         int oldDownload = DownloadInactivityCycles;
@@ -106,6 +115,7 @@ public static class AppSettings
         Load(log: false);
 
         if (GpuThresholdPercent != oldThreshold ||
+            ShowStateNotifications != oldNotifications ||
             CheckIntervalMs != oldInterval ||
             GamepadInactivityCycles != oldGamepad ||
             DownloadInactivityCycles != oldDownload ||
@@ -126,6 +136,7 @@ public static class AppSettings
             var data = new SettingsData
             {
                 GpuThresholdPercent = GpuThresholdPercent,
+                ShowStateNotifications = ShowStateNotifications,
                 CheckIntervalMs = CheckIntervalMs,
                 GamepadInactivityCycles = GamepadInactivityCycles,
                 DownloadInactivityCycles = DownloadInactivityCycles,
@@ -145,6 +156,7 @@ public static class AppSettings
     private sealed class SettingsData
     {
         public float GpuThresholdPercent { get; set; } = DefaultGpuThresholdPercent;
+        public bool ShowStateNotifications { get; set; } = true;
         public int CheckIntervalMs { get; set; } = DefaultCheckIntervalMs;
         public int GamepadInactivityCycles { get; set; } = DefaultGamepadInactivityCycles;
         public int DownloadInactivityCycles { get; set; } = DefaultDownloadInactivityCycles;

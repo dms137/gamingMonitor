@@ -135,6 +135,12 @@ public static class NotificationHelper
     /// <param name="newState">New application state (e.g., "Gaming" or "Idle").</param>
     public static void ShowStateChangeNotification(string newState, string reason, bool isDisplayControlled, bool isSleepControlled)
     {
+        // Update and up-to-date toasts always show, state toasts respect the toggle.
+        if (!AppSettings.ShowStateNotifications)
+        {
+            return;
+        }
+
         try
         {
             // Toasts allow 3 text lines max and no colored text,

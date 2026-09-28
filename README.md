@@ -47,6 +47,9 @@ live GPU load, state with trigger reason, GPU threshold slider (5–90%),
 
 - Windows 10 version 1709+ / Windows 11 (WDDM driver for GPU monitoring)
 - No .NET runtime needed for release builds — they are self-contained single-file
+- If Windows blocks the unsigned exe (Smart App Control), either allow it
+  or turn Smart App Control off — Microsoft offers no free signing for hobby apps.
+  See “If Windows blocks the app” below
 
 ## Installation
 
@@ -83,6 +86,21 @@ re-read every check cycle, so hand edits apply without a restart
 | `GamepadInactivityCycles` | 30 | Cycles without input before the gamepad goes quiet (~6 min) |
 | `DownloadInactivityCycles` | 10 | Same for downloads (~2 min) |
 | `GpuInactivityCycles` | 10 | Same for GPU (~2 min) |
+
+## If Windows blocks the app
+
+Two different things can stop an unsigned hobby build — don't mix them up:
+
+- **SmartScreen** (“Windows protected your PC”): click `More info`,
+  then `Run anyway`. One-time thing per file, reputation builds up over time.
+- **Smart App Control** (silent block, `0x800711C7` in the event log):
+  there is no per-app bypass. The only way is turning Smart App Control
+  off system-wide — and that is a one-way door, it cannot be re-enabled
+  without reinstalling Windows. Think twice before doing that.
+
+Good to know: zips downloaded by the in-app updater carry no
+Mark-of-the-Web (browsers add it, `HttpClient` does not), so self-updated
+copies skip the SmartScreen warning.
 
 ## Updates
 

@@ -33,7 +33,7 @@ public partial class SettingsForm : Form
 
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
-        ClientSize = new Size(360, 270);
+        ClientSize = new Size(360, 296);
         BackColor = BgColor;
         ForeColor = TextColor;
         TopMost = true;
@@ -216,6 +216,19 @@ public partial class SettingsForm : Form
         closeButton.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 80);
         closeButton.Click += (s, e) => Close();
 
+        var notificationsCheck = new CheckBox
+        {
+            Text = "Show state notifications",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Font = new Font("Segoe UI", 9, FontStyle.Regular),
+            ForeColor = TextColor,
+            BackColor = BgColor,
+            Margin = Padding.Empty,
+            Checked = AppSettings.ShowStateNotifications
+        };
+        notificationsCheck.CheckedChanged += (s, e) => AppSettings.ShowStateNotifications = notificationsCheck.Checked;
+
         var autoStartCheck = new CheckBox
         {
             Text = "Start with Windows",
@@ -233,9 +246,9 @@ public partial class SettingsForm : Form
         var grid = new TableLayoutPanel
         {
             Location = new Point(20, 96),
-            Size = new Size(320, 158),
+            Size = new Size(320, 184),
             ColumnCount = 2,
-            RowCount = 5,
+            RowCount = 6,
             BackColor = BgColor,
             Margin = Padding.Empty,
             Padding = Padding.Empty
@@ -246,6 +259,7 @@ public partial class SettingsForm : Form
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 48f));
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 26f));
+        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 26f));
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 34f));
 
         grid.Controls.Add(gpuCaption, 0, 0);
@@ -254,10 +268,12 @@ public partial class SettingsForm : Form
         grid.Controls.Add(_valueLabel, 1, 1);
         grid.Controls.Add(_thresholdSlider, 0, 2);
         grid.SetColumnSpan(_thresholdSlider, 2);
-        grid.Controls.Add(autoStartCheck, 0, 3);
+        grid.Controls.Add(notificationsCheck, 0, 3);
+        grid.SetColumnSpan(notificationsCheck, 2);
+        grid.Controls.Add(autoStartCheck, 0, 4);
         grid.SetColumnSpan(autoStartCheck, 2);
-        grid.Controls.Add(versionLabel, 0, 4);
-        grid.Controls.Add(closeButton, 1, 4);
+        grid.Controls.Add(versionLabel, 0, 5);
+        grid.Controls.Add(closeButton, 1, 5);
 
         Controls.Add(header);
         Controls.Add(grid);
@@ -379,6 +395,20 @@ public partial class SettingsForm : Form
         _valueLabel.Text = $"{AppSettings.GpuThresholdPercent:F0}%";
     }
 
+    private static string FormatDuration(DateTime since)
+    {
+        TimeSpan elapsed = DateTime.Now - since;
+        if (elapsed < TimeSpan.Zero)
+        {
+            elapsed = TimeSpan.Zero;
+        }
+
+        int hours = (int)elapsed.TotalHours;
+        return hours > 0
+            ? $"{hours}:{elapsed.Minutes:00}:{elapsed.Seconds:00}"
+            : $"{elapsed.Minutes}:{elapsed.Seconds:00}";
+    }
+
     private void UpdateStatus()
     {
         StateSnapshot snapshot = _getState();
@@ -389,7 +419,8 @@ public partial class SettingsForm : Form
             AppState.Downloading => AccentColor,
             _ => SecondaryColor
         };
-        _stateDetail.Text = $"{snapshot.Reason} · {snapshot.Since:HH:mm}";
+        _stateDetail.Text = FormatDuration(snapshot.Since);
+        _toolTip.SetToolTip(_stateDetail, $"{snapshot.Reason} · Since {snapshot.Since:HH:mm}");
 
         _gpuLoadValue.Text = $"{snapshot.GpuUtilization:F1}%";
     }
