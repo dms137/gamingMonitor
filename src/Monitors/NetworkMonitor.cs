@@ -1,5 +1,6 @@
 namespace GamingMonitor.Monitors;
 
+using GamingMonitor.Infrastructure;
 using Serilog;
 using System.Diagnostics;
 
@@ -9,11 +10,28 @@ public class NetworkMonitor : IActivityMonitor
 
     private readonly PerformanceCounterCategory _category = new PerformanceCounterCategory("Process");
 
-    private readonly List<ProcessMonitor> _monitors = new List<ProcessMonitor>
+    private readonly Dictionary<string, ProcessMonitor> _monitors =
+        new Dictionary<string, ProcessMonitor>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Syncs tracked processes with the configuration, disposing removed ones.
+    /// </summary>
+    private void SyncMonitors(IEnumerable<string> processNames)
     {
-        new ProcessMonitor("steam"),
-        new ProcessMonitor("gamingservicesnet"),
-    };
+        var wanted = new HashSet<string>(processNames, StringComparer.OrdinalIgnoreCase);
+
+        foreach (string name in wanted)
+        {
+            _monitors.TryAdd(name, new ProcessMonitor(name));
+        }
+
+        foreach (string expired in _monitors.Keys.Where(k => !wanted.Contains(k)).ToList())
+        {
+            try { _monitors[expired].Dispose(); }
+            catch { }
+            _monitors.Remove(expired);
+        }
+    }
 
     public AppState ActiveState => AppState.Downloading;
 
@@ -38,9 +56,11 @@ public class NetworkMonitor : IActivityMonitor
             return false;
         }
 
+        SyncMonitors(AppSettings.DownloadProcesses);
+
         bool isAnyActive = false;
 
-        foreach (var monitor in _monitors)
+        foreach (var monitor in _monitors.Values)
         {
             float rate = monitor.GetTotalRateBytesPerSec(allInstanceNames);
             bool isActive = rate > DOWNLOAD_THRESHOLD_BYTES_PER_SEC;

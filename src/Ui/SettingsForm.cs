@@ -18,6 +18,8 @@ public partial class SettingsForm : Form
     private readonly Func<StateSnapshot> _getState;
     private readonly TrackBar _thresholdSlider;
     private readonly Label _valueLabel;
+    private readonly TrackBar _afkSlider;
+    private readonly Label _afkValueLabel;
     private readonly Label _stateDot;
     private readonly Label _stateLabel;
     private readonly Label _stateDetail;
@@ -33,7 +35,7 @@ public partial class SettingsForm : Form
 
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
-        ClientSize = new Size(360, 296);
+        ClientSize = new Size(360, 366);
         BackColor = BgColor;
         ForeColor = TextColor;
         TopMost = true;
@@ -173,7 +175,7 @@ public partial class SettingsForm : Form
             AutoPopDelay = 10000,
             ShowAlways = true
         };
-        _toolTip.SetToolTip(infoLabel, "System is treated as gaming when GPU load exceeds this value.");
+        _toolTip.SetToolTip(infoLabel, "System is treated as Gaming when GPU load exceeds this value.");
 
         _thresholdSlider = new TrackBar
         {
@@ -243,12 +245,71 @@ public partial class SettingsForm : Form
         autoStartCheck.CheckedChanged += (s, e) => AutoStart.SetEnabled(autoStartCheck.Checked);
 
         // Body grid: captions on the left, values right-aligned in one column
+        var afkCaption = new Label
+        {
+            Text = "AFK timeout",
+            AutoSize = true,
+            Font = new Font("Segoe UI", 10, FontStyle.Regular),
+            ForeColor = SecondaryColor,
+            BackColor = BgColor,
+            Margin = Padding.Empty
+        };
+
+        var afkInfo = new Label
+        {
+            Text = "\U0001F6C8", // U+1F6C8, present in Segoe UI Symbol
+            AutoSize = true,
+            Font = new Font("Segoe UI Symbol", 10, FontStyle.Regular),
+            ForeColor = SecondaryColor,
+            BackColor = BgColor,
+            Cursor = Cursors.Hand,
+            Margin = new Padding(6, 0, 0, 0)
+        };
+
+        var afkFlow = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            BackColor = BgColor,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+        afkFlow.Controls.Add(afkCaption);
+        afkFlow.Controls.Add(afkInfo);
+        _toolTip.SetToolTip(afkInfo, "Forces Idle from Gaming after hours without keyboard, mouse or gamepad input.");
+
+        _afkValueLabel = new Label
+        {
+            AutoSize = true,
+            Anchor = AnchorStyles.Right,
+            Font = new Font("Segoe UI", 11, FontStyle.Bold),
+            ForeColor = AccentColor,
+            BackColor = BgColor,
+            Margin = Padding.Empty
+        };
+
+        _afkSlider = new TrackBar
+        {
+            Minimum = 1,
+            Maximum = 7,
+            TickFrequency = 1,
+            LargeChange = 1,
+            SmallChange = 1,
+            Value = AfkSliderPosition(AppSettings.AfkTimeoutMinutes),
+            Dock = DockStyle.Fill,
+            BackColor = BgColor,
+            Margin = new Padding(0, 4, 0, 0)
+        };
+        _afkSlider.Scroll += AfkSlider_Scroll;
+
         var grid = new TableLayoutPanel
         {
             Location = new Point(20, 96),
-            Size = new Size(320, 184),
+            Size = new Size(320, 254),
             ColumnCount = 2,
-            RowCount = 6,
+            RowCount = 8,
             BackColor = BgColor,
             Margin = Padding.Empty,
             Padding = Padding.Empty
@@ -256,6 +317,8 @@ public partial class SettingsForm : Form
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 48f));
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 48f));
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 26f));
@@ -268,17 +331,22 @@ public partial class SettingsForm : Form
         grid.Controls.Add(_valueLabel, 1, 1);
         grid.Controls.Add(_thresholdSlider, 0, 2);
         grid.SetColumnSpan(_thresholdSlider, 2);
-        grid.Controls.Add(notificationsCheck, 0, 3);
+        grid.Controls.Add(afkFlow, 0, 3);
+        grid.Controls.Add(_afkValueLabel, 1, 3);
+        grid.Controls.Add(_afkSlider, 0, 4);
+        grid.SetColumnSpan(_afkSlider, 2);
+        grid.Controls.Add(notificationsCheck, 0, 5);
         grid.SetColumnSpan(notificationsCheck, 2);
-        grid.Controls.Add(autoStartCheck, 0, 4);
+        grid.Controls.Add(autoStartCheck, 0, 6);
         grid.SetColumnSpan(autoStartCheck, 2);
-        grid.Controls.Add(versionLabel, 0, 5);
-        grid.Controls.Add(closeButton, 1, 5);
+        grid.Controls.Add(versionLabel, 0, 7);
+        grid.Controls.Add(closeButton, 1, 7);
 
         Controls.Add(header);
         Controls.Add(grid);
 
         UpdateValueLabel();
+        UpdateAfkValueLabel();
         UpdateStatus();
 
         _refreshTimer = new System.Windows.Forms.Timer { Interval = 1000 };
@@ -383,6 +451,32 @@ public partial class SettingsForm : Form
 
         AppSettings.GpuThresholdPercent = snapped;
         UpdateValueLabel();
+    }
+
+    /// <summary>
+    /// Maps AFK timeout minutes to slider position: 1-6 hours, 7 means Never.
+    /// </summary>
+    private static int AfkSliderPosition(int minutes)
+    {
+        if (minutes <= 0)
+        {
+            return 7;
+        }
+
+        return Math.Clamp((int)Math.Round(minutes / 60.0), 1, 6);
+    }
+
+    private void AfkSlider_Scroll(object? sender, EventArgs e)
+    {
+        AppSettings.AfkTimeoutMinutes = _afkSlider.Value >= 7 ? 0 : _afkSlider.Value * 60;
+        UpdateAfkValueLabel();
+    }
+
+    private void UpdateAfkValueLabel()
+    {
+        _afkValueLabel.Text = AppSettings.AfkTimeoutMinutes <= 0
+            ? "Never"
+            : $"{AppSettings.AfkTimeoutMinutes / 60}h";
     }
 
     private void RefreshTimer_Tick(object? sender, EventArgs e)

@@ -40,8 +40,13 @@ Requires Windows 10 version 1709+ / Windows 11.
 
 Left-click the tray icon (or click any state toast) to open it:
 live GPU load, current state with trigger reason and duration,
-GPU threshold slider (5–90%), `Show state notifications` and
-`Start with Windows` toggles, running version.
+GPU threshold slider (5–90%), AFK timeout slider (1–6h + Never),
+`Show state notifications` and `Start with Windows` toggles,
+running version.
+
+No keyboard, mouse or gamepad input for the AFK timeout (default 2h)
+force-releases `Gaming` back to `Idle`, even if the GPU is still busy.
+Downloads stay exempt.
 
 Fine-tuning lives in `assets\settings.json` — see
 [Configuration](docs/configuration.md).

@@ -1,4 +1,4 @@
-namespace GamingMonitor.Ui;
+namespace GamingMonitor.Infrastructure;
 
 using System.Runtime.InteropServices;
 
@@ -45,6 +45,17 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool DestroyIcon(IntPtr hIcon);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetLastInputInfo")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetLastInputInfo(ref LASTINPUTINFO plii);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct LASTINPUTINFO
+    {
+        public uint cbSize;
+        public uint dwTime;
+    }
 
     public delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
 

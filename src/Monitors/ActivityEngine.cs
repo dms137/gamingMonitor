@@ -2,6 +2,7 @@ namespace GamingMonitor.Monitors;
 
 using GamingMonitor.Infrastructure;
 using Serilog;
+using System.Runtime.InteropServices;
 
 /// <summary>
 /// Power state machine: polls activity monitors on a worker thread,
@@ -19,6 +20,7 @@ public sealed class ActivityEngine : IDisposable
     private readonly List<MonitoredSource> _sources;
     private Thread? _thread;
     private volatile bool _stop;
+    private DateTime _lastGamepadInput = DateTime.Now;
 
     public event Action? StateChanged;
 
@@ -53,6 +55,39 @@ public sealed class ActivityEngine : IDisposable
         }
     }
 
+    private DateTime LastAnyInput()
+    {
+        DateTime keyboardMouse = GetLastKeyboardMouseInput();
+        return keyboardMouse > _lastGamepadInput ? keyboardMouse : _lastGamepadInput;
+    }
+
+    /// <summary>
+    /// System-wide last keyboard/mouse input. Fail-open: on error
+    /// reports now so a broken API can never force sleep.
+    /// </summary>
+    private static DateTime GetLastKeyboardMouseInput()
+    {
+        try
+        {
+            var info = new NativeMethods.LASTINPUTINFO
+            {
+                cbSize = (uint)Marshal.SizeOf<NativeMethods.LASTINPUTINFO>()
+            };
+
+            if (!NativeMethods.GetLastInputInfo(ref info))
+            {
+                return DateTime.Now;
+            }
+
+            int msAgo = unchecked(Environment.TickCount - (int)info.dwTime);
+            return DateTime.Now.AddMilliseconds(-Math.Max(0, msAgo));
+        }
+        catch
+        {
+            return DateTime.Now;
+        }
+    }
+
     private void MainCheckLoop()
     {
         // The first cycle always reports, so startup shows the same
@@ -77,16 +112,31 @@ public sealed class ActivityEngine : IDisposable
             foreach (var (source, active) in checkTasks.Select(t => t.Result))
             {
                 source.Update(active);
+                if (active && source.Monitor is DualSenseMonitor)
+                {
+                    _lastGamepadInput = DateTime.Now;
+                }
             }
 
             MonitoredSource? activeSource = _sources.FirstOrDefault(s => s.IsTrulyActive);
             AppState newlyCalculatedState = activeSource?.Monitor.ActiveState ?? AppState.Idle;
+            string reason = activeSource?.Monitor.DescribeActive() ?? "No activity";
+
+            // Long absence kills Gaming even if the GPU still renders something.
+            // Downloads stay exempt. Disabled when the timeout is 0 (Never).
+            if (AppSettings.AfkTimeoutMinutes > 0 &&
+                newlyCalculatedState == AppState.Gaming &&
+                DateTime.Now - LastAnyInput() > TimeSpan.FromMinutes(AppSettings.AfkTimeoutMinutes))
+            {
+                newlyCalculatedState = AppState.Idle;
+                reason = "AFK timeout";
+            }
 
             if (firstCycle || newlyCalculatedState != CurrentState)
             {
                 firstCycle = false;
                 CurrentState = newlyCalculatedState;
-                Reason = activeSource?.Monitor.DescribeActive() ?? "No activity";
+                Reason = reason;
                 ChangedAt = DateTime.Now;
 
                 Log.Information($"[State] New state: {CurrentState} ({Reason}).");

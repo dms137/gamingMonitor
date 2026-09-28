@@ -13,6 +13,8 @@ so prefer editing while the app is stopped.
 | `GamepadInactivityCycles` | 30 | 1–600 | Quiet cycles before the gamepad drops out (~6 min) |
 | `DownloadInactivityCycles` | 10 | 1–600 | Same for downloads (~2 min) |
 | `GpuInactivityCycles` | 10 | 1–600 | Same for GPU (~2 min) |
+| `AfkTimeoutMinutes` | 120 | 0–720, 0 = Never | No keyboard/mouse/gamepad input for this long forces `Gaming` back to `Idle` (downloads stay exempt). Also the flyout slider (1–6h + Never) |
+| `DownloadProcesses` | `["steam", "gamingservicesnet"]` | — | Process names watched for download activity |
 
 Missing keys fall back to defaults, so old files keep working.
 

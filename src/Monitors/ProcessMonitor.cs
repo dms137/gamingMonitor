@@ -2,7 +2,7 @@ namespace GamingMonitor.Monitors;
 
 using System.Diagnostics;
 
-public class ProcessMonitor
+public class ProcessMonitor : IDisposable
 {
     private Dictionary<string, PerformanceCounter> _counters = new Dictionary<string, PerformanceCounter>();
     private const string COUNTER_NAME = "IO Data Bytes/sec";
@@ -71,5 +71,16 @@ public class ProcessMonitor
         }
 
         return totalRate;
+    }
+
+    public void Dispose()
+    {
+        foreach (var counter in _counters.Values)
+        {
+            try { counter.Dispose(); }
+            catch { }
+        }
+
+        _counters.Clear();
     }
 }

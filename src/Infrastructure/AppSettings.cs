@@ -19,6 +19,9 @@ public static class AppSettings
     public const int MinInactivityCycles = 1;
     public const int MaxInactivityCycles = 600;
 
+    public const int DefaultAfkTimeoutMinutes = 120;
+    public const int MaxAfkTimeoutMinutes = 720;
+
     private static readonly string _settingsPath = Path.Combine(AppContext.BaseDirectory, "assets", "settings.json");
 
     private static float _gpuThresholdPercent = DefaultGpuThresholdPercent;
@@ -27,6 +30,8 @@ public static class AppSettings
     private static int _gamepadInactivityCycles = DefaultGamepadInactivityCycles;
     private static int _downloadInactivityCycles = DefaultDownloadInactivityCycles;
     private static int _gpuInactivityCycles = DefaultGpuInactivityCycles;
+    private static int _afkTimeoutMinutes = DefaultAfkTimeoutMinutes;
+    private static List<string> _downloadProcesses = new List<string> { "steam", "gamingservicesnet" };
 
     public static float GpuThresholdPercent
     {
@@ -65,6 +70,26 @@ public static class AppSettings
     }
 
     /// <summary>
+    /// Minutes without any input (gamepad, keyboard, mouse) before Gaming
+    /// is force-released. 0 means Never (disabled).
+    /// </summary>
+    public static int AfkTimeoutMinutes
+    {
+        get => _afkTimeoutMinutes;
+        set => _afkTimeoutMinutes = Math.Clamp(value, 0, MaxAfkTimeoutMinutes);
+    }
+
+    public static List<string> DownloadProcesses
+    {
+        get => _downloadProcesses;
+        set => _downloadProcesses = value?
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList() ?? new List<string>();
+    }
+
+    /// <summary>
     /// Loads settings from settings.json if it exists, otherwise keeps defaults.
     /// </summary>
     public static void Load(bool log = true)
@@ -86,6 +111,8 @@ public static class AppSettings
                 GamepadInactivityCycles = data.GamepadInactivityCycles;
                 DownloadInactivityCycles = data.DownloadInactivityCycles;
                 GpuInactivityCycles = data.GpuInactivityCycles;
+                AfkTimeoutMinutes = data.AfkTimeoutMinutes;
+                DownloadProcesses = data.DownloadProcesses;
             }
 
             if (log)
@@ -111,6 +138,8 @@ public static class AppSettings
         int oldGamepad = GamepadInactivityCycles;
         int oldDownload = DownloadInactivityCycles;
         int oldGpu = GpuInactivityCycles;
+        int oldAfk = AfkTimeoutMinutes;
+        var oldProcesses = DownloadProcesses;
 
         Load(log: false);
 
@@ -119,7 +148,9 @@ public static class AppSettings
             CheckIntervalMs != oldInterval ||
             GamepadInactivityCycles != oldGamepad ||
             DownloadInactivityCycles != oldDownload ||
-            GpuInactivityCycles != oldGpu)
+            GpuInactivityCycles != oldGpu ||
+            AfkTimeoutMinutes != oldAfk ||
+            !DownloadProcesses.SequenceEqual(oldProcesses, StringComparer.OrdinalIgnoreCase))
         {
             Log.Information($"[Settings] Reloaded. GPU threshold: {GpuThresholdPercent:F0}%, interval: {CheckIntervalMs}ms.");
         }
@@ -140,7 +171,9 @@ public static class AppSettings
                 CheckIntervalMs = CheckIntervalMs,
                 GamepadInactivityCycles = GamepadInactivityCycles,
                 DownloadInactivityCycles = DownloadInactivityCycles,
-                GpuInactivityCycles = GpuInactivityCycles
+                GpuInactivityCycles = GpuInactivityCycles,
+                AfkTimeoutMinutes = AfkTimeoutMinutes,
+                DownloadProcesses = DownloadProcesses
             };
             string json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_settingsPath, json);
@@ -161,5 +194,7 @@ public static class AppSettings
         public int GamepadInactivityCycles { get; set; } = DefaultGamepadInactivityCycles;
         public int DownloadInactivityCycles { get; set; } = DefaultDownloadInactivityCycles;
         public int GpuInactivityCycles { get; set; } = DefaultGpuInactivityCycles;
+        public int AfkTimeoutMinutes { get; set; } = DefaultAfkTimeoutMinutes;
+        public List<string> DownloadProcesses { get; set; } = new List<string> { "steam", "gamingservicesnet" };
     }
 }

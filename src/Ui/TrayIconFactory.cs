@@ -1,5 +1,6 @@
 namespace GamingMonitor.Ui;
 
+using GamingMonitor.Infrastructure;
 using System.Drawing.Drawing2D;
 
 /// <summary>

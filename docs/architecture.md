@@ -33,6 +33,12 @@ Default timing: 10s base interval (≈12s effective with sampling),
 gamepad exits after 30 quiet cycles (~6 min), downloads and GPU
 after 10 (~2 min). All tunable, see [Configuration](configuration.md).
 
+Long absence (`AfkTimeoutMinutes`, default 2h) force-releases `Gaming`
+back to `Idle`, even if the GPU still renders something. Input means
+gamepad activity plus system-wide keyboard/mouse via `GetLastInputInfo`
+(fail-open: a broken API never forces sleep). Downloads stay exempt —
+an overnight Steam download is never killed by the AFK timer.
+
 Adding a monitor = a class with `ActiveState` + `CheckActive()` +
 `DescribeActive()` (`Monitors/IActivityMonitor`) plus one line
 in the engine's source list. The loop itself never changes.
