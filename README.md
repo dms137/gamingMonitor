@@ -1,6 +1,7 @@
 # GamingMonitor
 
 ![release](https://img.shields.io/github/v/release/dms137/gamingMonitor)
+![license](https://img.shields.io/github/license/dms137/gamingMonitor)
 
 > [!WARNING]
 > This project was vibe-coded from start to finish. It works on the author's
@@ -71,3 +72,8 @@ your `settings.json` survives.
 - [Configuration](docs/configuration.md) — `settings.json` reference
 - [Development](docs/development.md) — build, publish, release process
 - [Troubleshooting](docs/troubleshooting.md) — SmartScreen/SAC, logs
+
+## License
+
+MIT — see [LICENSE](LICENSE). Found a game that doesn't keep the PC
+awake? [File a game report](https://github.com/dms137/gamingMonitor/issues/new?template=game-not-detected.md).
