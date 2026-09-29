@@ -33,6 +33,13 @@ Default timing: 10s base interval (≈12s effective with sampling),
 gamepad exits after 30 quiet cycles (~6 min), downloads and GPU
 after 10 (~2 min). All tunable, see [Configuration](configuration.md).
 
+Every ~15 min the engine logs a `[Perf]` line (managed heap + working
+set, `Debug` level) so memory growth can be eyeballed over long
+sessions. Run with `--debug-logs` for per-cycle details.
+
+State toasts carry a fixed tag, so each new one replaces the previous
+instead of piling up in the notification center.
+
 Long absence (`AfkTimeoutMinutes`, default 2h) force-releases `Gaming`
 back to `Idle`, even if the GPU still renders something. Input means
 gamepad activity plus system-wide keyboard/mouse via `GetLastInputInfo`

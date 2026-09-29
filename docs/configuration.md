@@ -9,6 +9,8 @@ so prefer editing while the app is stopped.
 |---|---|---|---|
 | `GpuThresholdPercent` | 25 | 5–90 | GPU load % treated as gaming (also the flyout slider) |
 | `ShowStateNotifications` | true | — | State-change toasts on/off (update toasts always show) |
+| `SkippedUpdateVersion` | "" | — | Release tag skipped via the toast button; empty clears the skip |
+| `ShowStateNotifications` | true | — | State-change toasts on/off (update toasts always show) |
 | `CheckIntervalMs` | 10000 | 2000–60000 | Delay between checks |
 | `GamepadInactivityCycles` | 30 | 1–600 | Quiet cycles before the gamepad drops out (~6 min) |
 | `DownloadInactivityCycles` | 10 | 1–600 | Same for downloads (~2 min) |

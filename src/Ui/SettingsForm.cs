@@ -529,8 +529,10 @@ public partial class SettingsForm : Form
 
         _refreshTimer.Stop();
         _refreshTimer.Dispose();
-        AppSettings.Save();
-        Log.Information($"[Settings] GPU threshold set to {AppSettings.GpuThresholdPercent:F0}%.");
+        if (AppSettings.Save())
+        {
+            Log.Information($"[Settings] GPU threshold set to {AppSettings.GpuThresholdPercent:F0}%.");
+        }
         base.OnFormClosed(e);
     }
 

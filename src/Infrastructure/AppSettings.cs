@@ -189,12 +189,13 @@ public static class AppSettings
 
     /// <summary>
     /// Persists current settings to settings.json, but only if something changed.
+    /// Returns true when the file was actually written.
     /// </summary>
-    public static void Save()
+    public static bool Save()
     {
         if (!_dirty)
         {
-            return;
+            return false;
         }
 
         try
@@ -217,10 +218,12 @@ public static class AppSettings
             _dirty = false;
 
             Log.Information($"[Settings] Saved. GPU threshold: {GpuThresholdPercent:F0}%.");
+            return true;
         }
         catch (Exception ex)
         {
             Log.Error($"[Settings ERROR] Failed to save settings: {ex.Message}");
+            return false;
         }
     }
 

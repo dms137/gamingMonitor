@@ -1,6 +1,6 @@
 # Development
 
-Stack: .NET 8, Windows Forms (tray only, no main window), HidSharp,
+Stack: .NET 10, Windows Forms (tray only, no main window), HidSharp,
 Serilog, `System.Diagnostics.PerformanceCounter`, UWP toast toolkit.
 
 ## Build
@@ -14,7 +14,7 @@ dotnet publish src/GamingMonitor.csproj -p:PublishProfile=FolderProfile
 ```
 
 Output lands in
-`src\bin\Release\net8.0-windows10.0.19041.0\publish\win-x64\`.
+`src\bin\Release\net10.0-windows10.0.19041.0\publish\win-x64\`.
 Exit the running tray instance before rebuilding — it locks the exe.
 
 Zero warnings is the bar (`dotnet build` should report `0 Warning(s)`).
