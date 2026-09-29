@@ -108,7 +108,7 @@ public class GpuMonitor : IActivityMonitor
         float total = GetTotalUtilization();
         bool isActive = total > threshold;
 
-        Log.Information($"[GPU Monitor]: {(isActive ? "Active" : "Inactive")}. Utilization: {total:F1}%.");
+        Log.Debug($"[GPU Monitor]: {(isActive ? "Active" : "Inactive")}. Utilization: {total:F1}%.");
 
         return isActive;
     }

@@ -11,7 +11,7 @@ A lightweight Windows system-tray utility that keeps your PC awake while you are
 gaming, rendering, or downloading games — and lets it sleep otherwise.
 
 **What it does:**
-- 🎮 Notices gamepad activity (DualSense) and GPU load, blocks display sleep and system sleep while you play
+- 🎮 Notices gamepad activity (DualSense, XInput, and other HID pads) and GPU load, blocks display sleep and system sleep while you play
 - 📥 Notices Steam/Xbox downloads, blocks system sleep (but lets the display turn off) until they finish
 - 🔄 Updates itself from GitHub Releases in one click, preserving your settings
 

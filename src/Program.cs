@@ -35,6 +35,8 @@ public static partial class Program
             }
         }
 
+        LoggingConfig.DebugLogs = args.Contains("--debug-logs");
+
         // Mandatory initialization of AUMID and Toast Manager
         const string MyAumid = "MyCompany.GamingMonitor";
         NotificationAumidHelper.SetCurrentProcessExplicitAppUserModelID(MyAumid);
@@ -56,6 +58,10 @@ public static partial class Program
             else if (action == "downloadUpdate" && parsed.Contains("tag") && parsed.Contains("zip"))
             {
                 context.DownloadAndApplyUpdate(parsed["tag"], parsed["zip"]);
+            }
+            else if (action == "skipUpdate" && parsed.Contains("tag"))
+            {
+                UpdateChecker.SkipVersion(parsed["tag"]);
             }
             else
             {

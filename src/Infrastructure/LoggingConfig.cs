@@ -4,8 +4,17 @@ using Serilog;
 
 public static class LoggingConfig
 {
+    /// <summary>
+    /// Set from the --debug-logs command line flag before configuring.
+    /// </summary>
+    public static bool DebugLogs { get; set; }
+
     public static void ConfigureLogger()
     {
+        var fileLevel = DebugLogs
+            ? Serilog.Events.LogEventLevel.Debug
+            : Serilog.Events.LogEventLevel.Information;
+
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             //.WriteTo.Console(
@@ -13,10 +22,10 @@ public static class LoggingConfig
             .WriteTo.File(
                 path: "logs/monitor_log.txt",
                 rollingInterval: RollingInterval.Day,
-                restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information,
+                restrictedToMinimumLevel: fileLevel,
                 outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff} {Level:u3}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
 
-        Log.Information("Serilog logger has been configured and initialized.");
+        Log.Information($"Serilog logger configured (file level: {fileLevel}).");
     }
 }

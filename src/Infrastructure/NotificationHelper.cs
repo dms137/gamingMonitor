@@ -39,6 +39,10 @@ public static class NotificationHelper
                     .AddArgument("action", "downloadUpdate")
                     .AddArgument("tag", tag)
                     .AddArgument("zip", zipUrl))
+                .AddButton(new ToastButton()
+                    .SetContent("Skip this version")
+                    .AddArgument("action", "skipUpdate")
+                    .AddArgument("tag", tag))
                 .SetToastDuration(ToastDuration.Long)
                 .Show();
         }
@@ -145,11 +149,14 @@ public static class NotificationHelper
         {
             // Toasts allow 3 text lines max and no colored text,
             // so the reason shares the plain title line.
+            // A fixed tag replaces the previous state toast instead of piling up.
+            try { ToastNotificationManagerCompat.History.Remove("gm-state"); }
+            catch { }
             new ToastContentBuilder()
                 .AddText($"{newState} ({reason})")
                 .AppendStatus(isDisplayControlled, isSleepControlled)
                 .SetToastDuration(ToastDuration.Short)
-                .Show();
+                .Show(toast => toast.Tag = "gm-state");
         }
         catch (Exception ex)
         {

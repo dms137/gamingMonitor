@@ -48,14 +48,18 @@ in the engine's source list. The loop itself never changes.
 - **DualSenseMonitor** — raw HID input reports over Bluetooth/USB
   (HidSharp): sticks with dead zone, button bitmasks. Triggers, motion
   sensors and touchpad are ignored to avoid false positives.
+- **XInputMonitor** — polls XInput slots for Xbox-compatible gamepads
+  (buttons, triggers, sticks with dead zones). Degrades silently
+  without `xinput1_4.dll`.
 - **GpuMonitor** — sums `GPU Engine/*/Utilization Percentage` across
   all engines. Works with any WDDM GPU (NVIDIA / AMD / Intel).
 - **NetworkMonitor / ProcessMonitor** — per-process `IO Data Bytes/sec`
   for `steam` and `gamingservicesnet`. Counters are cached and cleaned
   up to avoid handle leaks.
-- **GamePadMonitor** (parked) — an older `Windows.Gaming.Input` based
-  attempt (Logitech F710 era). Currently unused, kept for a future
-  investigation into non-DualSense gamepads.
+- **GamepadMonitor** — generic `Windows.Gaming.Input` polling for any
+  HID game controller not covered above (DualShock 4, Switch Pro,
+  F710 in DirectInput mode, sticks). F710 in XInput mode is handled
+  by `XInputMonitor` instead.
 
 ## UI (`Ui/`)
 

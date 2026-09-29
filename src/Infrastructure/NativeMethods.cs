@@ -50,11 +50,33 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool GetLastInputInfo(ref LASTINPUTINFO plii);
 
+    [LibraryImport("xinput1_4.dll", EntryPoint = "XInputGetState")]
+    public static partial uint XInputGetState(uint dwUserIndex, ref XINPUT_STATE pState);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct LASTINPUTINFO
     {
         public uint cbSize;
         public uint dwTime;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct XINPUT_STATE
+    {
+        public uint PacketNumber;
+        public XINPUT_GAMEPAD Gamepad;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct XINPUT_GAMEPAD
+    {
+        public ushort Buttons;
+        public byte LeftTrigger;
+        public byte RightTrigger;
+        public short ThumbLX;
+        public short ThumbLY;
+        public short ThumbRX;
+        public short ThumbRY;
     }
 
     public delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);

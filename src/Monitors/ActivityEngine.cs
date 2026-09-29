@@ -2,6 +2,7 @@ namespace GamingMonitor.Monitors;
 
 using GamingMonitor.Infrastructure;
 using Serilog;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 /// <summary>
@@ -12,9 +13,13 @@ using System.Runtime.InteropServices;
 public sealed class ActivityEngine : IDisposable
 {
     private readonly DualSenseMonitor _dualSenseMonitor = new DualSenseMonitor();
+    private readonly XInputMonitor _xinputMonitor = new XInputMonitor();
+    private readonly GamepadMonitor _rawGamepadMonitor = new GamepadMonitor();
     private readonly GpuMonitor _gpuMonitor = new GpuMonitor();
     private readonly NetworkMonitor _networkMonitor = new NetworkMonitor();
     private readonly MonitoredSource _gamepadSource;
+    private readonly MonitoredSource _xinputSource;
+    private readonly MonitoredSource _rawSource;
     private readonly MonitoredSource _gpuSource;
     private readonly MonitoredSource _downloadSource;
     private readonly List<MonitoredSource> _sources;
@@ -35,9 +40,11 @@ public sealed class ActivityEngine : IDisposable
     {
         // Priority order: gamepad and GPU mean Gaming, downloads mean Downloading.
         _gamepadSource = new MonitoredSource(_dualSenseMonitor, AppSettings.GamepadInactivityCycles);
+        _xinputSource = new MonitoredSource(_xinputMonitor, AppSettings.GamepadInactivityCycles);
+        _rawSource = new MonitoredSource(_rawGamepadMonitor, AppSettings.GamepadInactivityCycles);
         _gpuSource = new MonitoredSource(_gpuMonitor, AppSettings.GpuInactivityCycles);
         _downloadSource = new MonitoredSource(_networkMonitor, AppSettings.DownloadInactivityCycles);
-        _sources = new List<MonitoredSource> { _gamepadSource, _gpuSource, _downloadSource };
+        _sources = new List<MonitoredSource> { _gamepadSource, _xinputSource, _rawSource, _gpuSource, _downloadSource };
     }
 
     public void Start()
@@ -93,8 +100,15 @@ public sealed class ActivityEngine : IDisposable
         // The first cycle always reports, so startup shows the same
         // state notification as any other transition.
         bool firstCycle = true;
+        int cycle = 0;
         while (!_stop)
         {
+            if (++cycle % 75 == 0)
+            {
+                Log.Debug($"[Perf] Managed: {GC.GetTotalMemory(false) / 1048576} MB, " +
+                    $"working set: {Process.GetCurrentProcess().WorkingSet64 / 1048576} MB.");
+            }
+
             // Pick up hand edits to settings.json without a restart.
             AppSettings.Reload();
             _gamepadSource.SetThreshold(AppSettings.GamepadInactivityCycles);
@@ -112,7 +126,7 @@ public sealed class ActivityEngine : IDisposable
             foreach (var (source, active) in checkTasks.Select(t => t.Result))
             {
                 source.Update(active);
-                if (active && source.Monitor is DualSenseMonitor)
+                if (active && source.Monitor is DualSenseMonitor or XInputMonitor or GamepadMonitor)
                 {
                     _lastGamepadInput = DateTime.Now;
                 }

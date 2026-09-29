@@ -4,17 +4,23 @@ using Serilog;
 using System.Text;
 using Windows.Gaming.Input;
 
-public static class GamePadMonitor
+public class GamepadMonitor : IActivityMonitor
 {
     private const double DEADZONE = 0.25;
 
-    public static bool IsGamepadActive()
+    public AppState ActiveState => AppState.Gaming;
+
+    public bool CheckActive() => IsGamepadActive();
+
+    public string DescribeActive() => "Gamepad input";
+
+    public bool IsGamepadActive()
     {
         var rawControllers = RawGameController.RawGameControllers;
 
         if (rawControllers.Count == 0)
         {
-            Log.Information($"[Gamepad]: No active gamepad found.");
+            Log.Debug($"[Gamepad]: No controllers found.");
             return false;
         }
 
@@ -62,7 +68,7 @@ public static class GamePadMonitor
     /// <summary>
     /// Logs all non-zero buttons, axes (outside DEADZONE), and switches.
     /// </summary>
-    private static void LogRawData(int buttonCount, bool[] buttonArray, int axisCount, double[] axisArray, GameControllerSwitchPosition[] switchArray)
+    private void LogRawData(int buttonCount, bool[] buttonArray, int axisCount, double[] axisArray, GameControllerSwitchPosition[] switchArray)
     {
         var sb = new StringBuilder();
 

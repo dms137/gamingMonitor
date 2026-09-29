@@ -32,41 +32,52 @@ public static class AppSettings
     private static int _gpuInactivityCycles = DefaultGpuInactivityCycles;
     private static int _afkTimeoutMinutes = DefaultAfkTimeoutMinutes;
     private static List<string> _downloadProcesses = new List<string> { "steam", "gamingservicesnet" };
+    private static string _skippedUpdateVersion = string.Empty;
+    private static bool _dirty;
+
+    private static void SetField<T>(ref T field, T value)
+    {
+        if (!EqualityComparer<T>.Default.Equals(field, value))
+        {
+            field = value;
+            _dirty = true;
+        }
+    }
 
     public static float GpuThresholdPercent
     {
         get => _gpuThresholdPercent;
-        set => _gpuThresholdPercent = Math.Clamp(value, MinGpuThresholdPercent, MaxGpuThresholdPercent);
+        set => SetField(ref _gpuThresholdPercent, Math.Clamp(value, MinGpuThresholdPercent, MaxGpuThresholdPercent));
     }
 
     public static bool ShowStateNotifications
     {
         get => _showStateNotifications;
-        set => _showStateNotifications = value;
+        set => SetField(ref _showStateNotifications, value);
     }
 
     public static int CheckIntervalMs
     {
         get => _checkIntervalMs;
-        set => _checkIntervalMs = Math.Clamp(value, MinCheckIntervalMs, MaxCheckIntervalMs);
+        set => SetField(ref _checkIntervalMs, Math.Clamp(value, MinCheckIntervalMs, MaxCheckIntervalMs));
     }
 
     public static int GamepadInactivityCycles
     {
         get => _gamepadInactivityCycles;
-        set => _gamepadInactivityCycles = Math.Clamp(value, MinInactivityCycles, MaxInactivityCycles);
+        set => SetField(ref _gamepadInactivityCycles, Math.Clamp(value, MinInactivityCycles, MaxInactivityCycles));
     }
 
     public static int DownloadInactivityCycles
     {
         get => _downloadInactivityCycles;
-        set => _downloadInactivityCycles = Math.Clamp(value, MinInactivityCycles, MaxInactivityCycles);
+        set => SetField(ref _downloadInactivityCycles, Math.Clamp(value, MinInactivityCycles, MaxInactivityCycles));
     }
 
     public static int GpuInactivityCycles
     {
         get => _gpuInactivityCycles;
-        set => _gpuInactivityCycles = Math.Clamp(value, MinInactivityCycles, MaxInactivityCycles);
+        set => SetField(ref _gpuInactivityCycles, Math.Clamp(value, MinInactivityCycles, MaxInactivityCycles));
     }
 
     /// <summary>
@@ -76,17 +87,34 @@ public static class AppSettings
     public static int AfkTimeoutMinutes
     {
         get => _afkTimeoutMinutes;
-        set => _afkTimeoutMinutes = Math.Clamp(value, 0, MaxAfkTimeoutMinutes);
+        set => SetField(ref _afkTimeoutMinutes, Math.Clamp(value, 0, MaxAfkTimeoutMinutes));
+    }
+
+    /// <summary>
+    /// Release tag the user chose to skip. Empty means none skipped.
+    /// </summary>
+    public static string SkippedUpdateVersion
+    {
+        get => _skippedUpdateVersion;
+        set => SetField(ref _skippedUpdateVersion, value ?? string.Empty);
     }
 
     public static List<string> DownloadProcesses
     {
         get => _downloadProcesses;
-        set => _downloadProcesses = value?
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Select(name => name.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList() ?? new List<string>();
+        set
+        {
+            var cleaned = value?
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList() ?? new List<string>();
+            if (!cleaned.SequenceEqual(_downloadProcesses, StringComparer.OrdinalIgnoreCase))
+            {
+                _downloadProcesses = cleaned;
+                _dirty = true;
+            }
+        }
     }
 
     /// <summary>
@@ -113,6 +141,7 @@ public static class AppSettings
                 GpuInactivityCycles = data.GpuInactivityCycles;
                 AfkTimeoutMinutes = data.AfkTimeoutMinutes;
                 DownloadProcesses = data.DownloadProcesses;
+                SkippedUpdateVersion = data.SkippedUpdateVersion;
             }
 
             if (log)
@@ -140,6 +169,7 @@ public static class AppSettings
         int oldGpu = GpuInactivityCycles;
         int oldAfk = AfkTimeoutMinutes;
         var oldProcesses = DownloadProcesses;
+        string oldSkipped = SkippedUpdateVersion;
 
         Load(log: false);
 
@@ -150,17 +180,23 @@ public static class AppSettings
             DownloadInactivityCycles != oldDownload ||
             GpuInactivityCycles != oldGpu ||
             AfkTimeoutMinutes != oldAfk ||
-            !DownloadProcesses.SequenceEqual(oldProcesses, StringComparer.OrdinalIgnoreCase))
+            !DownloadProcesses.SequenceEqual(oldProcesses, StringComparer.OrdinalIgnoreCase) ||
+            SkippedUpdateVersion != oldSkipped)
         {
             Log.Information($"[Settings] Reloaded. GPU threshold: {GpuThresholdPercent:F0}%, interval: {CheckIntervalMs}ms.");
         }
     }
 
     /// <summary>
-    /// Persists current settings to settings.json.
+    /// Persists current settings to settings.json, but only if something changed.
     /// </summary>
     public static void Save()
     {
+        if (!_dirty)
+        {
+            return;
+        }
+
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
@@ -173,10 +209,12 @@ public static class AppSettings
                 DownloadInactivityCycles = DownloadInactivityCycles,
                 GpuInactivityCycles = GpuInactivityCycles,
                 AfkTimeoutMinutes = AfkTimeoutMinutes,
-                DownloadProcesses = DownloadProcesses
+                DownloadProcesses = DownloadProcesses,
+                SkippedUpdateVersion = SkippedUpdateVersion
             };
             string json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_settingsPath, json);
+            _dirty = false;
 
             Log.Information($"[Settings] Saved. GPU threshold: {GpuThresholdPercent:F0}%.");
         }
@@ -196,5 +234,6 @@ public static class AppSettings
         public int GpuInactivityCycles { get; set; } = DefaultGpuInactivityCycles;
         public int AfkTimeoutMinutes { get; set; } = DefaultAfkTimeoutMinutes;
         public List<string> DownloadProcesses { get; set; } = new List<string> { "steam", "gamingservicesnet" };
+        public string SkippedUpdateVersion { get; set; } = string.Empty;
     }
 }

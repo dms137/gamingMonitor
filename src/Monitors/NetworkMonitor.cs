@@ -66,7 +66,7 @@ public class NetworkMonitor : IActivityMonitor
             bool isActive = rate > DOWNLOAD_THRESHOLD_BYTES_PER_SEC;
             float rateMB = rate / (1024f * 1024f);
 
-            Log.Information($"[DL Monitor] {monitor.BaseName}: {(isActive ? "Active" : "Inactive")}. Rate: {rateMB:F2} MB/s.");
+            Log.Debug($"[DL Monitor] {monitor.BaseName}: {(isActive ? "Active" : "Inactive")}. Rate: {rateMB:F2} MB/s.");
 
             if (isActive)
             {

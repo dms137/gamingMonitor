@@ -12,7 +12,8 @@
 ## Logs
 
 - App log: `logs\monitor_log.txt` next to the exe (daily rolling,
-  `Information` and above).
+  `Information` and above). Run with `--debug-logs` for per-cycle
+  details (GPU/download rates, memory telemetry).
 - Updater trace: `%TEMP%\GamingMonitor\update.log` — every self-update
   step, including why a file copy was skipped.
 

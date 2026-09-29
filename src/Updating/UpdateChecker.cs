@@ -38,6 +38,14 @@ public static class UpdateChecker
                 return;
             }
 
+            if (!manual &&
+                !string.IsNullOrEmpty(AppSettings.SkippedUpdateVersion) &&
+                string.Equals(tag, AppSettings.SkippedUpdateVersion, StringComparison.OrdinalIgnoreCase))
+            {
+                Log.Debug($"[Update] Version {tag} skipped by user.");
+                return;
+            }
+
             if (latest > current)
             {
                 Log.Information($"[Update] New version available: {tag} (current {current}).");
@@ -53,7 +61,7 @@ public static class UpdateChecker
             }
             else
             {
-                Log.Information($"[Update] Up to date: {current}.");
+                Log.Debug($"[Update] Up to date: {current}.");
                 if (manual)
                 {
                     NotificationHelper.ShowUpToDateNotification(current.ToString());
@@ -64,6 +72,17 @@ public static class UpdateChecker
         {
             Log.Warning($"[Update] Version check failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Remembers the skipped release so automatic checks stay silent.
+    /// A newer release still notifies; manual checks ignore the skip.
+    /// </summary>
+    public static void SkipVersion(string tag)
+    {
+        AppSettings.SkippedUpdateVersion = tag;
+        AppSettings.Save();
+        Log.Information($"[Update] Version {tag} skipped by user.");
     }
 
     /// <summary>
