@@ -6,6 +6,11 @@ name: Winget
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish to winget'
+        required: true
 
 jobs:
   publish:
@@ -14,7 +19,9 @@ jobs:
       - name: Strip v prefix
         id: version
         shell: pwsh
-        run: echo "number=$($env:GITHUB_REF_NAME.TrimStart('v'))" >> $env:GITHUB_OUTPUT
+        run: |
+          $ref = "${{ github.event.release.tag_name || inputs.tag }}"
+          echo "number=$($ref.TrimStart('v'))" >> $env:GITHUB_OUTPUT
 
       - name: Update winget manifest
         uses: vedantmgoyal2009/winget-releaser@v2
