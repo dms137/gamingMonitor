@@ -129,6 +129,14 @@ public class TrayApplicationContext : ApplicationContext
     }
 
     /// <summary>
+    /// Cancels a pending shutdown countdown. Safe to call from any thread.
+    /// </summary>
+    public void CancelShutdown()
+    {
+        _engine.CancelShutdown();
+    }
+
+    /// <summary>
     /// Opens the settings flyout. Safe to call from any thread (e.g. toast activation).
     /// </summary>
     public void ShowSettings()

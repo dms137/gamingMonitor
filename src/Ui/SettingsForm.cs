@@ -20,6 +20,9 @@ public partial class SettingsForm : Form
     private readonly Label _valueLabel;
     private readonly TrackBar _afkSlider;
     private readonly Label _afkValueLabel;
+    private readonly TrackBar _shutdownSlider;
+    private readonly Label _shutdownValueLabel;
+    private static readonly int[] ShutdownMinuteOptions = { 1, 2, 5, 10 };
     private readonly Label _stateDot;
     private readonly Label _stateLabel;
     private readonly Label _stateDetail;
@@ -35,7 +38,7 @@ public partial class SettingsForm : Form
 
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
-        ClientSize = new Size(360, 366);
+        ClientSize = new Size(360, 436);
         BackColor = BgColor;
         ForeColor = TextColor;
         TopMost = true;
@@ -146,7 +149,7 @@ public partial class SettingsForm : Form
 
         var infoLabel = new Label
         {
-            Text = "🛈",
+            Text = "\U0001F6C8", // U+1F6C8, present in Segoe UI Symbol
             AutoSize = true,
             Font = new Font("Segoe UI Symbol", 10, FontStyle.Regular),
             ForeColor = SecondaryColor,
@@ -175,7 +178,7 @@ public partial class SettingsForm : Form
             AutoPopDelay = 10000,
             ShowAlways = true
         };
-        _toolTip.SetToolTip(infoLabel, "System is treated as Gaming when GPU load exceeds this value.");
+        _toolTip.SetToolTip(infoLabel, "'Gaming' status is triggered when GPU load exceeds this value.");
 
         _thresholdSlider = new TrackBar
         {
@@ -278,7 +281,7 @@ public partial class SettingsForm : Form
         };
         afkFlow.Controls.Add(afkCaption);
         afkFlow.Controls.Add(afkInfo);
-        _toolTip.SetToolTip(afkInfo, "Forces Idle from Gaming after hours without keyboard, mouse or gamepad input.");
+        _toolTip.SetToolTip(afkInfo, "Forces 'Idle' from 'Gaming' after period without keyboard, mouse or gamepad input.");
 
         _afkValueLabel = new Label
         {
@@ -304,12 +307,71 @@ public partial class SettingsForm : Form
         };
         _afkSlider.Scroll += AfkSlider_Scroll;
 
+        var shutdownCaption = new Label
+        {
+            Text = "PC off after download",
+            AutoSize = true,
+            Font = new Font("Segoe UI", 10, FontStyle.Regular),
+            ForeColor = SecondaryColor,
+            BackColor = BgColor,
+            Margin = Padding.Empty
+        };
+
+        var shutdownInfo = new Label
+        {
+            Text = "\U0001F6C8", // U+1F6C8, present in Segoe UI Symbol
+            AutoSize = true,
+            Font = new Font("Segoe UI Symbol", 10, FontStyle.Regular),
+            ForeColor = SecondaryColor,
+            BackColor = BgColor,
+            Cursor = Cursors.Hand,
+            Margin = new Padding(6, 0, 0, 0)
+        };
+
+        var shutdownFlow = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            BackColor = BgColor,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+        shutdownFlow.Controls.Add(shutdownCaption);
+        shutdownFlow.Controls.Add(shutdownInfo);
+        _toolTip.SetToolTip(shutdownInfo, "When downloads finish, wait this long in silence, then shut the PC down. Any input cancels it.");
+
+        _shutdownValueLabel = new Label
+        {
+            AutoSize = true,
+            Anchor = AnchorStyles.Right,
+            Font = new Font("Segoe UI", 11, FontStyle.Bold),
+            ForeColor = AccentColor,
+            BackColor = BgColor,
+            Margin = Padding.Empty
+        };
+
+        _shutdownSlider = new TrackBar
+        {
+            Minimum = 1,
+            Maximum = ShutdownMinuteOptions.Length + 1,
+            TickFrequency = 1,
+            LargeChange = 1,
+            SmallChange = 1,
+            Value = ShutdownSliderPosition(AppSettings.ShutdownGraceMinutes),
+            Dock = DockStyle.Fill,
+            BackColor = BgColor,
+            Margin = new Padding(0, 4, 0, 0)
+        };
+        _shutdownSlider.Scroll += ShutdownSlider_Scroll;
+
         var grid = new TableLayoutPanel
         {
             Location = new Point(20, 96),
-            Size = new Size(320, 254),
+            Size = new Size(320, 324),
             ColumnCount = 2,
-            RowCount = 8,
+            RowCount = 10,
             BackColor = BgColor,
             Margin = Padding.Empty,
             Padding = Padding.Empty
@@ -317,6 +379,8 @@ public partial class SettingsForm : Form
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 48f));
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 48f));
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -335,18 +399,23 @@ public partial class SettingsForm : Form
         grid.Controls.Add(_afkValueLabel, 1, 3);
         grid.Controls.Add(_afkSlider, 0, 4);
         grid.SetColumnSpan(_afkSlider, 2);
-        grid.Controls.Add(notificationsCheck, 0, 5);
+        grid.Controls.Add(shutdownFlow, 0, 5);
+        grid.Controls.Add(_shutdownValueLabel, 1, 5);
+        grid.Controls.Add(_shutdownSlider, 0, 6);
+        grid.SetColumnSpan(_shutdownSlider, 2);
+        grid.Controls.Add(notificationsCheck, 0, 7);
         grid.SetColumnSpan(notificationsCheck, 2);
-        grid.Controls.Add(autoStartCheck, 0, 6);
+        grid.Controls.Add(autoStartCheck, 0, 8);
         grid.SetColumnSpan(autoStartCheck, 2);
-        grid.Controls.Add(versionLabel, 0, 7);
-        grid.Controls.Add(closeButton, 1, 7);
+        grid.Controls.Add(versionLabel, 0, 9);
+        grid.Controls.Add(closeButton, 1, 9);
 
         Controls.Add(header);
         Controls.Add(grid);
 
         UpdateValueLabel();
         UpdateAfkValueLabel();
+        UpdateShutdownValueLabel();
         UpdateStatus();
 
         _refreshTimer = new System.Windows.Forms.Timer { Interval = 1000 };
@@ -477,6 +546,43 @@ public partial class SettingsForm : Form
         _afkValueLabel.Text = AppSettings.AfkTimeoutMinutes <= 0
             ? "Never"
             : $"{AppSettings.AfkTimeoutMinutes / 60}h";
+    }
+
+    /// <summary>
+    /// Maps shutdown grace minutes to slider position: 1, 2, 5, 10, Never.
+    /// </summary>
+    private static int ShutdownSliderPosition(int minutes)
+    {
+        if (minutes <= 0)
+        {
+            return ShutdownMinuteOptions.Length + 1;
+        }
+
+        int best = 0;
+        for (int i = 1; i < ShutdownMinuteOptions.Length; i++)
+        {
+            if (Math.Abs(ShutdownMinuteOptions[i] - minutes) < Math.Abs(ShutdownMinuteOptions[best] - minutes))
+            {
+                best = i;
+            }
+        }
+
+        return best + 1;
+    }
+
+    private void ShutdownSlider_Scroll(object? sender, EventArgs e)
+    {
+        AppSettings.ShutdownGraceMinutes = _shutdownSlider.Value > ShutdownMinuteOptions.Length
+            ? 0
+            : ShutdownMinuteOptions[_shutdownSlider.Value - 1];
+        UpdateShutdownValueLabel();
+    }
+
+    private void UpdateShutdownValueLabel()
+    {
+        _shutdownValueLabel.Text = AppSettings.ShutdownGraceMinutes <= 0
+            ? "Never"
+            : $"{AppSettings.ShutdownGraceMinutes}m";
     }
 
     private void RefreshTimer_Tick(object? sender, EventArgs e)

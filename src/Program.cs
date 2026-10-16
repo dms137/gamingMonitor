@@ -63,6 +63,10 @@ public static partial class Program
             {
                 UpdateChecker.SkipVersion(parsed["tag"]);
             }
+            else if (action == "cancelShutdown")
+            {
+                context.CancelShutdown();
+            }
             else
             {
                 context.ShowSettings();

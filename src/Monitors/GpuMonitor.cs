@@ -12,6 +12,7 @@ public class GpuMonitor : IActivityMonitor
 
     private readonly PerformanceCounterCategory _category = new PerformanceCounterCategory(CATEGORY_NAME);
     private readonly Dictionary<string, PerformanceCounter> _counters = new Dictionary<string, PerformanceCounter>();
+    private readonly Dictionary<int, string> _nameCache = new Dictionary<int, string>();
 
     public AppState ActiveState => AppState.Gaming;
 
@@ -51,6 +52,7 @@ public class GpuMonitor : IActivityMonitor
         }
         catch (ArgumentException)
         {
+            _nameCache.Remove(_lastActiveTopPid);
             return true;
         }
     }
@@ -66,18 +68,30 @@ public class GpuMonitor : IActivityMonitor
     /// Task Manager style name: file description
     /// (e.g. "Google Chrome"), exe name as fallback.
     /// </summary>
-    private static string? ResolveDisplayName(int pid)
+    private string? ResolveDisplayName(int pid)
     {
         if (pid <= 0)
         {
             return null;
         }
 
+        if (_nameCache.TryGetValue(pid, out string? cached))
+        {
+            return cached;
+        }
+
         try
         {
             using var process = Process.GetProcessById(pid);
             string? pretty = process.MainModule?.FileVersionInfo?.FileDescription;
-            return string.IsNullOrWhiteSpace(pretty) ? process.ProcessName : pretty;
+            string name = string.IsNullOrWhiteSpace(pretty) ? process.ProcessName : pretty;
+            if (_nameCache.Count > 200)
+            {
+                _nameCache.Clear();
+            }
+
+            _nameCache[pid] = name;
+            return name;
         }
         catch
         {

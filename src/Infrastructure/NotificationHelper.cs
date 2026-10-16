@@ -96,6 +96,39 @@ public static class NotificationHelper
     }
 
     /// <summary>
+    /// Shows (or refreshes) the shutdown countdown toast. Bypasses
+    /// the state notification toggle: this one is always important.
+    /// </summary>
+    public static void ShowShutdownCountdownNotification(int secondsRemaining)
+    {
+        try
+        {
+            HideShutdownNotification();
+            new ToastContentBuilder()
+                .AddText("Download finished. Shutting down.")
+                .AddText($"Shutdown in {secondsRemaining} seconds. Click Cancel to stop it.")
+                .AddButton(new ToastButton()
+                    .SetContent("Cancel")
+                    .AddArgument("action", "cancelShutdown"))
+                .SetToastDuration(ToastDuration.Long)
+                .Show(toast => toast.Tag = "gm-shutdown");
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"[Notification ERROR] Failed to show toast: {ex.Message}");
+        }
+    }
+
+    public static void HideShutdownNotification()
+    {
+        try
+        {
+            ToastNotificationManagerCompat.History.Remove("gm-shutdown");
+        }
+        catch { }
+    }
+
+    /// <summary>
     /// Shows a toast confirming the app is up to date.
     /// </summary>
     public static void ShowUpToDateNotification(string current)

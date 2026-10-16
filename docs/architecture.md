@@ -46,6 +46,14 @@ gamepad activity plus system-wide keyboard/mouse via `GetLastInputInfo`
 (fail-open: a broken API never forces sleep). Downloads stay exempt —
 an overnight Steam download is never killed by the AFK timer.
 
+Optional shutdown after downloads (`ShutdownGraceMinutes`, default
+Never): the `Downloading → Idle` transition arms a silent grace period.
+Any input or state change aborts it; surviving silence triggers a
+one-minute force toast with live countdown and a Cancel button, then
+`shutdown /s /t 5`. Cancel also runs `shutdown /a` for safety. The app
+itself never schedules anything with the OS before the final moment,
+so killing it mid-countdown cancels everything implicitly.
+
 Adding a monitor = a class with `ActiveState` + `CheckActive()` +
 `DescribeActive()` (`Monitors/IActivityMonitor`) plus one line
 in the engine's source list. The loop itself never changes.

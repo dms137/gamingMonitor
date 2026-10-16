@@ -22,6 +22,9 @@ public static class AppSettings
     public const int DefaultAfkTimeoutMinutes = 120;
     public const int MaxAfkTimeoutMinutes = 720;
 
+    public const int DefaultShutdownGraceMinutes = 0;
+    public const int MaxShutdownGraceMinutes = 60;
+
     private static readonly string _settingsPath = Path.Combine(AppContext.BaseDirectory, "assets", "settings.json");
 
     private static float _gpuThresholdPercent = DefaultGpuThresholdPercent;
@@ -31,6 +34,7 @@ public static class AppSettings
     private static int _downloadInactivityCycles = DefaultDownloadInactivityCycles;
     private static int _gpuInactivityCycles = DefaultGpuInactivityCycles;
     private static int _afkTimeoutMinutes = DefaultAfkTimeoutMinutes;
+    private static int _shutdownGraceMinutes = DefaultShutdownGraceMinutes;
     private static List<string> _downloadProcesses = new List<string> { "steam", "gamingservicesnet" };
     private static string _skippedUpdateVersion = string.Empty;
     private static bool _dirty;
@@ -91,6 +95,16 @@ public static class AppSettings
     }
 
     /// <summary>
+    /// Grace period after downloads finish before offering shutdown.
+    /// 0 means Never (disabled).
+    /// </summary>
+    public static int ShutdownGraceMinutes
+    {
+        get => _shutdownGraceMinutes;
+        set => SetField(ref _shutdownGraceMinutes, Math.Clamp(value, 0, MaxShutdownGraceMinutes));
+    }
+
+    /// <summary>
     /// Release tag the user chose to skip. Empty means none skipped.
     /// </summary>
     public static string SkippedUpdateVersion
@@ -142,6 +156,7 @@ public static class AppSettings
                 AfkTimeoutMinutes = data.AfkTimeoutMinutes;
                 DownloadProcesses = data.DownloadProcesses;
                 SkippedUpdateVersion = data.SkippedUpdateVersion;
+                ShutdownGraceMinutes = data.ShutdownGraceMinutes;
             }
 
             if (log)
@@ -170,6 +185,7 @@ public static class AppSettings
         int oldAfk = AfkTimeoutMinutes;
         var oldProcesses = DownloadProcesses;
         string oldSkipped = SkippedUpdateVersion;
+        int oldShutdown = ShutdownGraceMinutes;
 
         Load(log: false);
 
@@ -181,7 +197,8 @@ public static class AppSettings
             GpuInactivityCycles != oldGpu ||
             AfkTimeoutMinutes != oldAfk ||
             !DownloadProcesses.SequenceEqual(oldProcesses, StringComparer.OrdinalIgnoreCase) ||
-            SkippedUpdateVersion != oldSkipped)
+            SkippedUpdateVersion != oldSkipped ||
+            ShutdownGraceMinutes != oldShutdown)
         {
             Log.Information($"[Settings] Reloaded. GPU threshold: {GpuThresholdPercent:F0}%, interval: {CheckIntervalMs}ms.");
         }
@@ -211,7 +228,8 @@ public static class AppSettings
                 GpuInactivityCycles = GpuInactivityCycles,
                 AfkTimeoutMinutes = AfkTimeoutMinutes,
                 DownloadProcesses = DownloadProcesses,
-                SkippedUpdateVersion = SkippedUpdateVersion
+                SkippedUpdateVersion = SkippedUpdateVersion,
+                ShutdownGraceMinutes = ShutdownGraceMinutes
             };
             string json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_settingsPath, json);
@@ -238,5 +256,6 @@ public static class AppSettings
         public int AfkTimeoutMinutes { get; set; } = DefaultAfkTimeoutMinutes;
         public List<string> DownloadProcesses { get; set; } = new List<string> { "steam", "gamingservicesnet" };
         public string SkippedUpdateVersion { get; set; } = string.Empty;
+        public int ShutdownGraceMinutes { get; set; } = DefaultShutdownGraceMinutes;
     }
 }

@@ -26,6 +26,9 @@ public sealed class ActivityEngine : IDisposable
     private Thread? _thread;
     private volatile bool _stop;
     private DateTime _lastGamepadInput = DateTime.Now;
+    private DateTime? _graceEndsAt;
+    private DateTime? _finalEndsAt;
+    private DateTime _graceBaselineInput;
 
     public event Action? StateChanged;
 
@@ -60,6 +63,34 @@ public sealed class ActivityEngine : IDisposable
         {
             try { monitor.Dispose(); } catch { }
         }
+    }
+
+    /// <summary>
+    /// Aborts a pending shutdown countdown, if any.
+    /// Safe to call from any thread.
+    /// </summary>
+    public void CancelShutdown()
+    {
+        bool wasArmed = _graceEndsAt != null || _finalEndsAt != null;
+        _graceEndsAt = null;
+        _finalEndsAt = null;
+        if (!wasArmed)
+        {
+            return;
+        }
+
+        NotificationHelper.HideShutdownNotification();
+        try
+        {
+            Process.Start(new ProcessStartInfo("shutdown", "/a")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+        }
+        catch { }
+
+        Log.Information("[Shutdown] Countdown canceled by user.");
     }
 
     private DateTime LastAnyInput()
@@ -133,6 +164,7 @@ public sealed class ActivityEngine : IDisposable
             }
 
             MonitoredSource? activeSource = _sources.FirstOrDefault(s => s.IsTrulyActive);
+            AppState previousState = CurrentState;
             AppState newlyCalculatedState = activeSource?.Monitor.ActiveState ?? AppState.Idle;
             string reason = activeSource?.Monitor.DescribeActive() ?? "No activity";
 
@@ -163,7 +195,97 @@ public sealed class ActivityEngine : IDisposable
                 StateChanged?.Invoke();
             }
 
+            UpdateShutdownTracking(previousState, CurrentState);
+
             Thread.Sleep(AppSettings.CheckIntervalMs);
+        }
+    }
+
+    /// <summary>
+    /// Arms on the Downloading-to-Idle transition, aborts on any input
+    /// or state change, fires shutdown after the grace period plus
+    /// a one-minute force toast countdown.
+    /// </summary>
+    private void UpdateShutdownTracking(AppState previousState, AppState currentState)
+    {
+        int graceMinutes = AppSettings.ShutdownGraceMinutes;
+        if (graceMinutes <= 0)
+        {
+            DisarmShutdown();
+            return;
+        }
+
+        if (previousState == AppState.Downloading && currentState == AppState.Idle)
+        {
+            _graceEndsAt = DateTime.Now.AddMinutes(graceMinutes);
+            _finalEndsAt = null;
+            _graceBaselineInput = LastAnyInput();
+            Log.Information($"[Shutdown] Downloads finished, grace period started ({graceMinutes} min).");
+        }
+
+        if (_finalEndsAt != null)
+        {
+            if (currentState != AppState.Idle || LastAnyInput() > _graceBaselineInput)
+            {
+                DisarmShutdown("aborted");
+                return;
+            }
+
+            int remaining = (int)Math.Ceiling((_finalEndsAt.Value - DateTime.Now).TotalSeconds);
+            if (remaining <= 0)
+            {
+                DisarmShutdown(null);
+                Log.Warning("[Shutdown] Countdown over, shutting down now.");
+                try
+                {
+                    Process.Start(new ProcessStartInfo("shutdown", "/s /t 5 /c \"GamingMonitor: shutting down after downloads.\"")
+                    {
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"[Shutdown ERROR] Failed to start shutdown: {ex.Message}");
+                }
+
+                return;
+            }
+
+            NotificationHelper.ShowShutdownCountdownNotification(remaining);
+            return;
+        }
+
+        if (_graceEndsAt != null)
+        {
+            if (currentState != AppState.Idle || LastAnyInput() > _graceBaselineInput)
+            {
+                DisarmShutdown("aborted");
+                return;
+            }
+
+            if (DateTime.Now >= _graceEndsAt.Value)
+            {
+                _graceEndsAt = null;
+                _finalEndsAt = DateTime.Now.AddMinutes(1);
+                NotificationHelper.ShowShutdownCountdownNotification(60);
+                Log.Warning("[Shutdown] Grace over, final countdown started.");
+            }
+        }
+    }
+
+    private void DisarmShutdown(string? reason = null)
+    {
+        bool wasArmed = _graceEndsAt != null || _finalEndsAt != null;
+        _graceEndsAt = null;
+        _finalEndsAt = null;
+        if (wasArmed)
+        {
+            NotificationHelper.HideShutdownNotification();
+            if (reason != null)
+            {
+                Log.Information($"[Shutdown] Countdown {reason}.");
+            }
         }
     }
 }

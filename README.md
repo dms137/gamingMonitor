@@ -42,6 +42,7 @@ Requires Windows 10 version 1709+ / Windows 11.
 Left-click the tray icon (or click any state toast) to open it:
 live GPU load, current state with trigger reason and duration,
 GPU threshold slider (5–90%), AFK timeout slider (1–6h + Never),
+shutdown-after-download slider (1/2/5/10 min + Never),
 `Show state notifications` and `Start with Windows` toggles,
 running version.
 
