@@ -50,6 +50,12 @@ Adding a monitor = a class with `ActiveState` + `CheckActive()` +
 `DescribeActive()` (`Monitors/IActivityMonitor`) plus one line
 in the engine's source list. The loop itself never changes.
 
+A monitor can also override `IsDefinitivelyInactive()` to skip the
+grace period on a hard stop signal. GPU uses it: when the top consumer
+process is gone and nothing replaced its load, the source drops out
+on the next cycle instead of idling through hysteresis. PID reuse
+safely falls back to normal hysteresis.
+
 ## Monitors
 
 - **DualSenseMonitor** — raw HID input reports over Bluetooth/USB

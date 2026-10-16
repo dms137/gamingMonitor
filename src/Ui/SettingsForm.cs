@@ -506,7 +506,7 @@ public partial class SettingsForm : Form
     private void UpdateStatus()
     {
         StateSnapshot snapshot = _getState();
-        _stateLabel.Text = snapshot.State.ToString();
+        _stateLabel.Text = snapshot.State == AppState.Idle ? "Idle" : snapshot.Reason;
         _stateDot.ForeColor = snapshot.State switch
         {
             AppState.Gaming => GamingColor,
@@ -514,7 +514,8 @@ public partial class SettingsForm : Form
             _ => SecondaryColor
         };
         _stateDetail.Text = FormatDuration(snapshot.Since);
-        _toolTip.SetToolTip(_stateDetail, $"{snapshot.Reason} · Since {snapshot.Since:HH:mm}");
+        _toolTip.SetToolTip(_stateDetail, $"{snapshot.State} · Since {snapshot.Since:HH:mm}");
+        _toolTip.SetToolTip(_stateLabel, $"{snapshot.State} · Since {snapshot.Since:HH:mm}");
 
         _gpuLoadValue.Text = $"{snapshot.GpuUtilization:F1}%";
     }

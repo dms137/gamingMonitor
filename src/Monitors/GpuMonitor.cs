@@ -20,9 +20,70 @@ public class GpuMonitor : IActivityMonitor
     /// </summary>
     public float LastUtilization { get; private set; }
 
+    /// <summary>
+    /// PID of the process with the highest GPU usage, if identifiable.
+    /// </summary>
+    public int LastTopPid { get; private set; }
+
+    private int _lastActiveTopPid;
+
+    /// <summary>
+    /// GPU share of the top process, in percent.
+    /// </summary>
+    public float LastTopPercent { get; private set; }
+
     public bool CheckActive() => IsGpuActive();
 
-    public string DescribeActive() => $"GPU {LastUtilization:F0}%";
+    public bool IsDefinitivelyInactive()
+    {
+        // The top consumer is gone and nothing replaced its load:
+        // no point waiting out the grace period. PID reuse falls back
+        // to normal hysteresis, which is the safe direction.
+        if (_lastActiveTopPid <= 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            Process.GetProcessById(_lastActiveTopPid);
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            return true;
+        }
+    }
+
+    public string DescribeActive()
+    {
+        // No percentages here: this text is frozen at transition time,
+        // the live load is shown separately.
+        return ResolveDisplayName(LastTopPid) ?? "GPU";
+    }
+
+    /// <summary>
+    /// Task Manager style name: file description
+    /// (e.g. "Google Chrome"), exe name as fallback.
+    /// </summary>
+    private static string? ResolveDisplayName(int pid)
+    {
+        if (pid <= 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            string? pretty = process.MainModule?.FileVersionInfo?.FileDescription;
+            return string.IsNullOrWhiteSpace(pretty) ? process.ProcessName : pretty;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     /// <summary>
     /// Returns total GPU utilization across all engines.
@@ -86,17 +147,47 @@ public class GpuMonitor : IActivityMonitor
         Thread.Sleep(SAMPLE_DELAY_MS);
 
         float total = 0;
+        var perPid = new Dictionary<int, float>();
         foreach (var pair in _counters)
         {
             try
             {
-                total += pair.Value.NextValue();
+                float value = pair.Value.NextValue();
+                total += value;
+                if (TryParsePid(pair.Key, out int pid))
+                {
+                    perPid[pid] = perPid.TryGetValue(pid, out float current) ? current + value : value;
+                }
             }
             catch { }
         }
 
         LastUtilization = total;
+        if (perPid.Count > 0)
+        {
+            var top = perPid.MaxBy(kv => kv.Value);
+            LastTopPid = top.Key;
+            LastTopPercent = top.Value;
+        }
+        else
+        {
+            LastTopPid = 0;
+            LastTopPercent = 0;
+        }
+
         return total;
+    }
+
+    /// <summary>
+    /// Instance names look like pid_1234_luid_..._phys_0_eng_0_engtype_3d.
+    /// </summary>
+    private static bool TryParsePid(string instanceName, out int pid)
+    {
+        pid = 0;
+        string[] parts = instanceName.Split('_');
+        return parts.Length > 1 &&
+            string.Equals(parts[0], "pid", StringComparison.OrdinalIgnoreCase) &&
+            int.TryParse(parts[1], out pid);
     }
 
     /// <summary>
@@ -107,6 +198,11 @@ public class GpuMonitor : IActivityMonitor
         float threshold = thresholdPercent ?? AppSettings.GpuThresholdPercent;
         float total = GetTotalUtilization();
         bool isActive = total > threshold;
+
+        if (isActive)
+        {
+            _lastActiveTopPid = LastTopPid;
+        }
 
         Log.Debug($"[GPU Monitor]: {(isActive ? "Active" : "Inactive")}. Utilization: {total:F1}%.");
 

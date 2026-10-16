@@ -8,4 +8,10 @@ public interface IActivityMonitor
     AppState ActiveState { get; }
     bool CheckActive();
     string DescribeActive();
+
+    /// <summary>
+    /// Definitive stop signal (e.g. the consuming process exited).
+    /// Skips the hysteresis grace period. Default: never.
+    /// </summary>
+    bool IsDefinitivelyInactive() => false;
 }

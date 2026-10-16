@@ -33,6 +33,10 @@ public sealed class MonitoredSource
         {
             InactivityCounter = 0;
         }
+        else if (Monitor.IsDefinitivelyInactive())
+        {
+            InactivityCounter = InactivityThresholdCycles + 1;
+        }
         else if (InactivityCounter <= InactivityThresholdCycles)
         {
             InactivityCounter++;

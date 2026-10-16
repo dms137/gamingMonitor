@@ -89,7 +89,9 @@ public class TrayApplicationContext : ApplicationContext
         // Called on the engine worker thread, marshal UI work to the UI thread
         void apply()
         {
-            trayIcon.Text = $"Gaming Monitor - {_engine.CurrentState}";
+            trayIcon.Text = _engine.CurrentState == AppState.Idle
+                ? $"Gaming Monitor - {_engine.CurrentState}"
+                : $"Gaming Monitor - {_engine.CurrentState} ({_engine.Reason})";
             SetTrayIcon(_engine.CurrentState);
 
             var menu = trayIcon.ContextMenuStrip;
