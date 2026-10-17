@@ -79,7 +79,7 @@ public sealed class ActivityEngine : IDisposable
             return;
         }
 
-        NotificationHelper.HideShutdownNotification();
+        NotificationHelper.ShowShutdownCanceledNotification();
         try
         {
             Process.Start(new ProcessStartInfo("shutdown", "/a")
@@ -225,9 +225,13 @@ public sealed class ActivityEngine : IDisposable
 
         if (_finalEndsAt != null)
         {
-            if (currentState != AppState.Idle || LastAnyInput() > _graceBaselineInput)
+            // During the final countdown the toast is the contract: the user
+            // cancels it deliberately via the button, plain input no longer
+            // aborts. A new activity source still does, so we never shut down
+            // in the middle of a fresh download or game.
+            if (currentState != AppState.Idle)
             {
-                DisarmShutdown("aborted");
+                DisarmShutdown("aborted", notifyUser: true);
                 return;
             }
 
@@ -274,14 +278,24 @@ public sealed class ActivityEngine : IDisposable
         }
     }
 
-    private void DisarmShutdown(string? reason = null)
+    private void DisarmShutdown(string? reason = null, bool notifyUser = false)
     {
         bool wasArmed = _graceEndsAt != null || _finalEndsAt != null;
         _graceEndsAt = null;
         _finalEndsAt = null;
         if (wasArmed)
         {
-            NotificationHelper.HideShutdownNotification();
+            if (notifyUser)
+            {
+                // Morph the countdown toast into a confirmation instead of
+                // letting it silently disappear.
+                NotificationHelper.ShowShutdownCanceledNotification();
+            }
+            else
+            {
+                NotificationHelper.HideShutdownNotification();
+            }
+
             if (reason != null)
             {
                 Log.Information($"[Shutdown] Countdown {reason}.");

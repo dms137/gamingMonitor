@@ -14,7 +14,7 @@ public static class AppSettings
     public const int MaxCheckIntervalMs = 60000;
 
     public const int DefaultGamepadInactivityCycles = 30;
-    public const int DefaultDownloadInactivityCycles = 10;
+    public const int DefaultDownloadInactivityCycles = 5;
     public const int DefaultGpuInactivityCycles = 10;
     public const int MinInactivityCycles = 1;
     public const int MaxInactivityCycles = 600;

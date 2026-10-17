@@ -119,6 +119,28 @@ public static class NotificationHelper
         }
     }
 
+    /// <summary>
+    /// Replaces the countdown toast with a cancellation confirmation, so it
+    /// never just vanishes. Same tag, so it morphs the existing toast instead
+    /// of spawning a second one. Bypasses the state notification toggle.
+    /// </summary>
+    public static void ShowShutdownCanceledNotification()
+    {
+        try
+        {
+            HideShutdownNotification();
+            new ToastContentBuilder()
+                .AddText("Shutdown canceled")
+                .AddText("Activity detected - your PC will stay on.")
+                .SetToastDuration(ToastDuration.Short)
+                .Show(toast => toast.Tag = "gm-shutdown");
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"[Notification ERROR] Failed to show toast: {ex.Message}");
+        }
+    }
+
     public static void HideShutdownNotification()
     {
         try
