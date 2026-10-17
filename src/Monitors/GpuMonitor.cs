@@ -65,8 +65,11 @@ public class GpuMonitor : IActivityMonitor
     }
 
     /// <summary>
-    /// Task Manager style name: file description
-    /// (e.g. "Google Chrome"), exe name as fallback.
+    /// Task Manager style name. Resolution order: file description
+    /// ("Cyberpunk 2077" for Cyberpunk2077.exe), main window title
+    /// (covers packaged/WinGDK builds whose exe has no version info,
+    /// e.g. "Solarpunk-WinGDK-Shipping" -> "Solarpunk"), then the raw
+    /// exe name as the last resort.
     /// </summary>
     private string? ResolveDisplayName(int pid)
     {
@@ -80,23 +83,46 @@ public class GpuMonitor : IActivityMonitor
             return cached;
         }
 
+        string name;
+        string? pretty = null;
         try
         {
             using var process = Process.GetProcessById(pid);
-            string? pretty = process.MainModule?.FileVersionInfo?.FileDescription;
-            string name = string.IsNullOrWhiteSpace(pretty) ? process.ProcessName : pretty;
-            if (_nameCache.Count > 200)
-            {
-                _nameCache.Clear();
-            }
 
-            _nameCache[pid] = name;
-            return name;
+            // Reading ProcessName is safe even for protected game processes.
+            name = process.ProcessName;
+
+            try
+            {
+                pretty = process.MainModule?.FileVersionInfo?.FileDescription;
+                if (string.IsNullOrWhiteSpace(pretty))
+                {
+                    pretty = process.MainWindowTitle;
+                }
+            }
+            catch
+            {
+                // MainModule throws for protected/elevated processes; ignore.
+            }
         }
         catch
         {
+            // Process exited or is inaccessible.
             return null;
         }
+
+        if (!string.IsNullOrWhiteSpace(pretty))
+        {
+            name = pretty.Trim();
+        }
+
+        if (_nameCache.Count > 200)
+        {
+            _nameCache.Clear();
+        }
+
+        _nameCache[pid] = name;
+        return name;
     }
 
     /// <summary>
