@@ -83,21 +83,22 @@ public class GpuMonitor : IActivityMonitor
             return cached;
         }
 
-        string name;
-        string? pretty = null;
+        string processName;
+        string? description = null;
+        string? windowTitle = null;
         try
         {
             using var process = Process.GetProcessById(pid);
 
             // Reading ProcessName is safe even for protected game processes.
-            name = process.ProcessName;
+            processName = process.ProcessName;
 
             try
             {
-                pretty = process.MainModule?.FileVersionInfo?.FileDescription;
-                if (string.IsNullOrWhiteSpace(pretty))
+                description = process.MainModule?.FileVersionInfo?.FileDescription;
+                if (string.IsNullOrWhiteSpace(description))
                 {
-                    pretty = process.MainWindowTitle;
+                    windowTitle = process.MainWindowTitle;
                 }
             }
             catch
@@ -111,18 +112,39 @@ public class GpuMonitor : IActivityMonitor
             return null;
         }
 
-        if (!string.IsNullOrWhiteSpace(pretty))
+        string name = processName;
+
+        if (!string.IsNullOrWhiteSpace(description))
         {
-            name = pretty.Trim();
+            // File description is stable, safe to cache.
+            name = description.Trim();
+            CacheName(pid, name);
+        }
+        else if (!string.IsNullOrWhiteSpace(windowTitle))
+        {
+            name = windowTitle.Trim();
+
+            // Unreal games often start with the raw exe name as the title
+            // (e.g. "Game-Win64-Shipping") and rename it once loaded. While
+            // it still equals the exe name we treat it as a placeholder and
+            // keep polling; a real, distinct title gets cached so we stop.
+            if (!string.Equals(name, processName, StringComparison.OrdinalIgnoreCase))
+            {
+                CacheName(pid, name);
+            }
         }
 
+        return name;
+    }
+
+    private void CacheName(int pid, string name)
+    {
         if (_nameCache.Count > 200)
         {
             _nameCache.Clear();
         }
 
         _nameCache[pid] = name;
-        return name;
     }
 
     /// <summary>

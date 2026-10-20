@@ -194,6 +194,13 @@ public sealed class ActivityEngine : IDisposable
 
                 StateChanged?.Invoke();
             }
+            else if (reason != Reason)
+            {
+                // The display name can settle after startup (e.g. a game sets
+                // its window title a little late). Refresh it silently, so the
+                // flyout picks it up without firing another notification.
+                Reason = reason;
+            }
 
             UpdateShutdownTracking(previousState, CurrentState);
 
