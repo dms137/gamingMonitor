@@ -1,21 +1,28 @@
 namespace GamingMonitor.Monitors;
 
 /// <summary>
-/// Wraps a monitor with an inactivity hysteresis counter, so brief
-/// pauses do not immediately drop the system back to idle.
+/// Wraps a monitor with inactivity hysteresis, so brief pauses do not
+/// immediately drop the system back to idle, and (optionally) an entry
+/// hysteresis, so a brief burst does not immediately activate it.
 /// </summary>
 public sealed class MonitoredSource
 {
     public IActivityMonitor Monitor { get; }
     public int InactivityThresholdCycles { get; private set; }
+    public int EntryThresholdCycles { get; }
     public int InactivityCounter { get; private set; }
+
+    private int _activeStreak;
+
     public bool IsTrulyActive => InactivityCounter <= InactivityThresholdCycles;
 
-    public MonitoredSource(IActivityMonitor monitor, int inactivityThresholdCycles)
+    public MonitoredSource(IActivityMonitor monitor, int inactivityThresholdCycles, int entryThresholdCycles = 1)
     {
         Monitor = monitor;
-        InactivityThresholdCycles = inactivityThresholdCycles;
-        InactivityCounter = inactivityThresholdCycles;
+        InactivityThresholdCycles = Math.Max(1, inactivityThresholdCycles);
+        EntryThresholdCycles = Math.Max(1, entryThresholdCycles);
+        // Start inactive: activation is gated by the entry streak below.
+        InactivityCounter = InactivityThresholdCycles + 1;
     }
 
     public void SetThreshold(int inactivityThresholdCycles)
@@ -31,9 +38,17 @@ public sealed class MonitoredSource
     {
         if (activeThisCycle)
         {
-            InactivityCounter = 0;
+            _activeStreak++;
+            if (_activeStreak >= EntryThresholdCycles)
+            {
+                InactivityCounter = 0;
+            }
+
+            return;
         }
-        else if (Monitor.IsDefinitivelyInactive())
+
+        _activeStreak = 0;
+        if (Monitor.IsDefinitivelyInactive())
         {
             InactivityCounter = InactivityThresholdCycles + 1;
         }

@@ -30,6 +30,11 @@ public sealed class ActivityEngine : IDisposable
     private DateTime? _finalEndsAt;
     private DateTime _graceBaselineInput;
 
+    // Downloads can burst briefly at startup (Steam / Gaming Services),
+    // which used to arm the shutdown timer. Require a few consecutive
+    // active cycles before entering Downloading.
+    private const int DownloadEntryCycles = 3;
+
     public event Action? StateChanged;
 
     public AppState CurrentState { get; private set; } = AppState.Idle;
@@ -46,7 +51,8 @@ public sealed class ActivityEngine : IDisposable
         _xinputSource = new MonitoredSource(_xinputMonitor, AppSettings.GamepadInactivityCycles);
         _rawSource = new MonitoredSource(_rawGamepadMonitor, AppSettings.GamepadInactivityCycles);
         _gpuSource = new MonitoredSource(_gpuMonitor, AppSettings.GpuInactivityCycles);
-        _downloadSource = new MonitoredSource(_networkMonitor, AppSettings.DownloadInactivityCycles);
+        _downloadSource = new MonitoredSource(
+            _networkMonitor, AppSettings.DownloadInactivityCycles, entryThresholdCycles: DownloadEntryCycles);
         _sources = new List<MonitoredSource> { _gamepadSource, _xinputSource, _rawSource, _gpuSource, _downloadSource };
     }
 
