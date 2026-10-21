@@ -215,6 +215,17 @@ public sealed class ActivityEngine : IDisposable
             AppState newlyCalculatedState = activeSource?.Monitor.ActiveState ?? AppState.Idle;
             string reason = activeSource?.Monitor.DescribeActive() ?? "No activity";
 
+            // Nice-to-have: when a gamepad drives the Gaming state, prefer the
+            // name of the process loading the GPU. Falls back to "Gamepad
+            // input" when no name is available. Reuses the top PID the GPU
+            // check already measured; the trigger logic itself is untouched.
+            if (activeSource?.Monitor is DualSenseMonitor or XInputMonitor or GamepadMonitor &&
+                _gpuSource.IsTrulyActive &&
+                _gpuMonitor.TryGetActiveProcessName(out string gpuName))
+            {
+                reason = gpuName;
+            }
+
             // Long absence kills Gaming even if the GPU still renders something.
             // Downloads stay exempt. Disabled when the timeout is 0 (Never).
             if (AppSettings.AfkTimeoutMinutes > 0 &&

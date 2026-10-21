@@ -61,7 +61,19 @@ public class GpuMonitor : IActivityMonitor
     {
         // No percentages here: this text is frozen at transition time,
         // the live load is shown separately.
-        return ResolveDisplayName(LastTopPid) ?? "GPU";
+        return TryGetActiveProcessName(out string name) ? name : "GPU";
+    }
+
+    /// <summary>
+    /// Friendly name of the current top GPU consumer, if it can be resolved.
+    /// Lets the flyout name the running game even when a gamepad drives
+    /// the state, without a second perf-counter sampling pass.
+    /// </summary>
+    public bool TryGetActiveProcessName(out string name)
+    {
+        string? resolved = ResolveDisplayName(LastTopPid);
+        name = resolved ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(resolved);
     }
 
     /// <summary>
