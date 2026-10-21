@@ -28,12 +28,8 @@ public sealed class ActivityEngine : IDisposable
     private DateTime _lastGamepadInput = DateTime.Now;
     private DateTime? _graceEndsAt;
     private DateTime? _finalEndsAt;
-    private DateTime _graceBaselineInput;
-
-    // Downloads can burst briefly at startup (Steam / Gaming Services),
-    // which used to arm the shutdown timer. Require a few consecutive
-    // active cycles before entering Downloading.
-    private const int DownloadEntryCycles = 3;
+    private uint _graceBaselineInputTick;
+    private DateTime _graceBaselineGamepadInput;
 
     public event Action? StateChanged;
 
@@ -51,8 +47,7 @@ public sealed class ActivityEngine : IDisposable
         _xinputSource = new MonitoredSource(_xinputMonitor, AppSettings.GamepadInactivityCycles);
         _rawSource = new MonitoredSource(_rawGamepadMonitor, AppSettings.GamepadInactivityCycles);
         _gpuSource = new MonitoredSource(_gpuMonitor, AppSettings.GpuInactivityCycles);
-        _downloadSource = new MonitoredSource(
-            _networkMonitor, AppSettings.DownloadInactivityCycles, entryThresholdCycles: DownloadEntryCycles);
+        _downloadSource = new MonitoredSource(_networkMonitor, AppSettings.DownloadInactivityCycles);
         _sources = new List<MonitoredSource> { _gamepadSource, _xinputSource, _rawSource, _gpuSource, _downloadSource };
     }
 
@@ -132,6 +127,50 @@ public sealed class ActivityEngine : IDisposable
         }
     }
 
+    /// <summary>
+    /// Raw GetLastInputInfo tick. Unlike the DateTime conversion it is stable
+    /// across consecutive reads and only changes when new input arrives.
+    /// </summary>
+    private static bool TryGetLastInputTick(out uint tick)
+    {
+        try
+        {
+            var info = new NativeMethods.LASTINPUTINFO
+            {
+                cbSize = (uint)Marshal.SizeOf<NativeMethods.LASTINPUTINFO>()
+            };
+
+            if (NativeMethods.GetLastInputInfo(ref info))
+            {
+                tick = info.dwTime;
+                return true;
+            }
+        }
+        catch { }
+
+        tick = 0;
+        return false;
+    }
+
+    /// <summary>
+    /// True when keyboard/mouse or gamepad input arrived after the grace
+    /// period started. Uses the raw input tick so clock-resolution jitter
+    /// cannot fake an input event (which used to abort the countdown
+    /// immediately after it was armed).
+    /// </summary>
+    private bool HasInputSinceGraceBaseline()
+    {
+        if (_lastGamepadInput > _graceBaselineGamepadInput)
+        {
+            return true;
+        }
+
+        // Fail-safe: if the API cannot be read, never abort on that alone.
+        return _graceBaselineInputTick != 0 &&
+            TryGetLastInputTick(out uint tick) &&
+            tick != _graceBaselineInputTick;
+    }
+
     private void MainCheckLoop()
     {
         // The first cycle always reports, so startup shows the same
@@ -149,6 +188,8 @@ public sealed class ActivityEngine : IDisposable
             // Pick up hand edits to settings.json without a restart.
             AppSettings.Reload();
             _gamepadSource.SetThreshold(AppSettings.GamepadInactivityCycles);
+            _xinputSource.SetThreshold(AppSettings.GamepadInactivityCycles);
+            _rawSource.SetThreshold(AppSettings.GamepadInactivityCycles);
             _gpuSource.SetThreshold(AppSettings.GpuInactivityCycles);
             _downloadSource.SetThreshold(AppSettings.DownloadInactivityCycles);
 
@@ -232,7 +273,8 @@ public sealed class ActivityEngine : IDisposable
         {
             _graceEndsAt = DateTime.Now.AddMinutes(graceMinutes);
             _finalEndsAt = null;
-            _graceBaselineInput = LastAnyInput();
+            TryGetLastInputTick(out _graceBaselineInputTick);
+            _graceBaselineGamepadInput = _lastGamepadInput;
             Log.Information($"[Shutdown] Downloads finished, grace period started ({graceMinutes} min).");
         }
 
@@ -275,7 +317,7 @@ public sealed class ActivityEngine : IDisposable
 
         if (_graceEndsAt != null)
         {
-            if (currentState != AppState.Idle || LastAnyInput() > _graceBaselineInput)
+            if (currentState != AppState.Idle || HasInputSinceGraceBaseline())
             {
                 DisarmShutdown("aborted");
                 return;

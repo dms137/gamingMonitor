@@ -623,7 +623,7 @@ public partial class SettingsForm : Form
         _toolTip.SetToolTip(_stateDetail, $"{snapshot.State} · Since {snapshot.Since:HH:mm}");
         _toolTip.SetToolTip(_stateLabel, $"{snapshot.State} · Since {snapshot.Since:HH:mm}");
 
-        _gpuLoadValue.Text = $"{snapshot.GpuUtilization:F1}%";
+        _gpuLoadValue.Text = $"{snapshot.GpuUtilization:F0}%";
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
