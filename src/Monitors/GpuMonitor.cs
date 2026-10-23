@@ -97,6 +97,7 @@ public class GpuMonitor : IActivityMonitor
 
         string processName;
         string? description = null;
+        string? productName = null;
         string? windowTitle = null;
         try
         {
@@ -107,16 +108,17 @@ public class GpuMonitor : IActivityMonitor
 
             try
             {
-                description = process.MainModule?.FileVersionInfo?.FileDescription;
-                if (string.IsNullOrWhiteSpace(description))
-                {
-                    windowTitle = process.MainWindowTitle;
-                }
+                var version = process.MainModule?.FileVersionInfo;
+                description = version?.FileDescription;
+                productName = version?.ProductName;
             }
             catch
             {
                 // MainModule throws for protected/elevated processes; ignore.
             }
+
+            // The window title is often readable even when MainModule is not.
+            try { windowTitle = process.MainWindowTitle; } catch { }
         }
         catch
         {
@@ -124,29 +126,55 @@ public class GpuMonitor : IActivityMonitor
             return null;
         }
 
-        string name = processName;
-
-        if (!string.IsNullOrWhiteSpace(description))
+        // Prefer real metadata, skipping raw/placeholder names that Unreal
+        // builds expose (e.g. "WardogsClient-Win64-Shipping").
+        string? resolved = null;
+        if (!IsPlaceholder(description, processName))
         {
-            // File description is stable, safe to cache.
-            name = description.Trim();
+            resolved = description;
+        }
+        else if (!IsPlaceholder(productName, processName))
+        {
+            resolved = productName;
+        }
+        else if (!IsPlaceholder(windowTitle, processName))
+        {
+            resolved = windowTitle;
+        }
+
+        if (resolved != null)
+        {
+            string name = resolved.Trim();
             CacheName(pid, name);
+            Log.Debug($"[GPU Name] pid {pid}: exe='{processName}', desc='{description}', " +
+                $"product='{productName}', title='{windowTitle}' -> '{name}'.");
+            return name;
         }
-        else if (!string.IsNullOrWhiteSpace(windowTitle))
+
+        // Nothing friendly yet. Keep the raw exe name without caching, so
+        // later cycles can pick up a window title that settles late.
+        Log.Debug($"[GPU Name] pid {pid}: exe='{processName}', desc='{description}', " +
+            $"product='{productName}', title='{windowTitle}' -> fallback.");
+        return processName;
+    }
+
+    /// <summary>
+    /// True when a candidate equals the exe name or looks like a raw Unreal
+    /// build name rather than a real display title.
+    /// </summary>
+    private static bool IsPlaceholder(string? candidate, string processName)
+    {
+        if (string.IsNullOrWhiteSpace(candidate))
         {
-            name = windowTitle.Trim();
-
-            // Unreal games often start with the raw exe name as the title
-            // (e.g. "Game-Win64-Shipping") and rename it once loaded. While
-            // it still equals the exe name we treat it as a placeholder and
-            // keep polling; a real, distinct title gets cached so we stop.
-            if (!string.Equals(name, processName, StringComparison.OrdinalIgnoreCase))
-            {
-                CacheName(pid, name);
-            }
+            return true;
         }
 
-        return name;
+        string value = candidate.Trim();
+        return value.Equals(processName, StringComparison.OrdinalIgnoreCase)
+            || value.Equals(processName + ".exe", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("-Win64-Shipping", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("-WinGDK-Shipping", StringComparison.OrdinalIgnoreCase)
+            || value.EndsWith("-Shipping", StringComparison.OrdinalIgnoreCase);
     }
 
     private void CacheName(int pid, string name)

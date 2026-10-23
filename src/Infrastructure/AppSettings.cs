@@ -140,6 +140,12 @@ public static class AppSettings
         {
             if (!File.Exists(_settingsPath))
             {
+                if (log)
+                {
+                    Log.Information($"[Settings] No settings file at '{_settingsPath}', using defaults " +
+                        $"(shutdown after download: {ShutdownGraceMinutes} min).");
+                }
+
                 return;
             }
 
@@ -161,8 +167,12 @@ public static class AppSettings
 
             if (log)
             {
-                Log.Information($"[Settings] Loaded. GPU threshold: {GpuThresholdPercent:F0}%, interval: {CheckIntervalMs}ms.");
+                Log.Information($"[Settings] Loaded from '{_settingsPath}'. GPU threshold: {GpuThresholdPercent:F0}%, interval: {CheckIntervalMs}ms, " +
+                    $"download timeout: {DownloadInactivityCycles} cycles, shutdown after download: {ShutdownGraceMinutes} min.");
             }
+
+            // Memory now matches the file; only unsaved user edits are dirty.
+            _dirty = false;
         }
         catch (Exception ex)
         {
@@ -176,6 +186,14 @@ public static class AppSettings
     /// </summary>
     public static void Reload()
     {
+        // Never clobber edits the user made but has not saved yet: the
+        // settings form persists on close, so a cycle in between would
+        // otherwise read the old file and silently revert the change.
+        if (_dirty)
+        {
+            return;
+        }
+
         float oldThreshold = GpuThresholdPercent;
         bool oldNotifications = ShowStateNotifications;
         int oldInterval = CheckIntervalMs;

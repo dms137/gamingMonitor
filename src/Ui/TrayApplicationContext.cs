@@ -292,6 +292,10 @@ public class TrayApplicationContext : ApplicationContext
     {
         _engine.Dispose();
 
+        // Persist any settings changed in an open flyout, even if it does
+        // not get a chance to close through its normal path.
+        AppSettings.Save();
+
         Log.Information($"{reason} Releasing power requests...");
         PowerManagement.SetDisplayRequired(false);
         PowerManagement.SetSystemRequired(false);

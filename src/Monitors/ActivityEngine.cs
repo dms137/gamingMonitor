@@ -29,7 +29,6 @@ public sealed class ActivityEngine : IDisposable
     private DateTime? _graceEndsAt;
     private DateTime? _finalEndsAt;
     private uint _graceBaselineInputTick;
-    private DateTime _graceBaselineGamepadInput;
 
     public event Action? StateChanged;
 
@@ -160,11 +159,9 @@ public sealed class ActivityEngine : IDisposable
     /// </summary>
     private bool HasInputSinceGraceBaseline()
     {
-        if (_lastGamepadInput > _graceBaselineGamepadInput)
-        {
-            return true;
-        }
-
+        // Gamepad activity is already covered by the state change above
+        // (it flips to Gaming), so only keyboard/mouse is checked here.
+        // This keeps a drifting stick from silently aborting the countdown.
         // Fail-safe: if the API cannot be read, never abort on that alone.
         return _graceBaselineInputTick != 0 &&
             TryGetLastInputTick(out uint tick) &&
@@ -179,91 +176,134 @@ public sealed class ActivityEngine : IDisposable
         int cycle = 0;
         while (!_stop)
         {
-            if (++cycle % 75 == 0)
+            // Never let one failed cycle kill the worker thread: that used
+            // to stop all monitoring (and the shutdown timer) silently.
+            try
             {
-                Log.Debug($"[Perf] Managed: {GC.GetTotalMemory(false) / 1048576} MB, " +
-                    $"working set: {Process.GetCurrentProcess().WorkingSet64 / 1048576} MB.");
+                RunCycle(ref firstCycle, ref cycle);
             }
-
-            // Pick up hand edits to settings.json without a restart.
-            AppSettings.Reload();
-            _gamepadSource.SetThreshold(AppSettings.GamepadInactivityCycles);
-            _xinputSource.SetThreshold(AppSettings.GamepadInactivityCycles);
-            _rawSource.SetThreshold(AppSettings.GamepadInactivityCycles);
-            _gpuSource.SetThreshold(AppSettings.GpuInactivityCycles);
-            _downloadSource.SetThreshold(AppSettings.DownloadInactivityCycles);
-
-            // Activity checks run concurrently: each one blocks
-            // on hardware/counter sampling, so sequential calls add up.
-            // The monitors own disjoint state, sharing is safe here.
-            Task<(MonitoredSource Source, bool Active)>[] checkTasks = _sources
-                .Select(source => Task.Run(() => (source, source.Monitor.CheckActive())))
-                .ToArray();
-            Task.WaitAll(checkTasks);
-
-            foreach (var (source, active) in checkTasks.Select(t => t.Result))
+            catch (Exception ex)
             {
-                source.Update(active);
-                if (active && source.Monitor is DualSenseMonitor or XInputMonitor or GamepadMonitor)
-                {
-                    _lastGamepadInput = DateTime.Now;
-                }
+                Log.Error($"[Engine ERROR] Cycle failed: {ex.GetType().Name}: {ex.Message}");
             }
-
-            MonitoredSource? activeSource = _sources.FirstOrDefault(s => s.IsTrulyActive);
-            AppState previousState = CurrentState;
-            AppState newlyCalculatedState = activeSource?.Monitor.ActiveState ?? AppState.Idle;
-            string reason = activeSource?.Monitor.DescribeActive() ?? "No activity";
-
-            // Nice-to-have: when a gamepad drives the Gaming state, prefer the
-            // name of the process loading the GPU. Falls back to "Gamepad
-            // input" when no name is available. Reuses the top PID the GPU
-            // check already measured; the trigger logic itself is untouched.
-            if (activeSource?.Monitor is DualSenseMonitor or XInputMonitor or GamepadMonitor &&
-                _gpuSource.IsTrulyActive &&
-                _gpuMonitor.TryGetActiveProcessName(out string gpuName))
-            {
-                reason = gpuName;
-            }
-
-            // Long absence kills Gaming even if the GPU still renders something.
-            // Downloads stay exempt. Disabled when the timeout is 0 (Never).
-            if (AppSettings.AfkTimeoutMinutes > 0 &&
-                newlyCalculatedState == AppState.Gaming &&
-                DateTime.Now - LastAnyInput() > TimeSpan.FromMinutes(AppSettings.AfkTimeoutMinutes))
-            {
-                newlyCalculatedState = AppState.Idle;
-                reason = "AFK timeout";
-            }
-
-            if (firstCycle || newlyCalculatedState != CurrentState)
-            {
-                firstCycle = false;
-                CurrentState = newlyCalculatedState;
-                Reason = reason;
-                ChangedAt = DateTime.Now;
-
-                Log.Information($"[State] New state: {CurrentState} ({Reason}).");
-
-                IsDisplayControlled = CurrentState == AppState.Gaming;
-                IsSleepControlled = CurrentState != AppState.Idle;
-                PowerManagement.SetDisplayRequired(IsDisplayControlled);
-                PowerManagement.SetSystemRequired(IsSleepControlled);
-
-                StateChanged?.Invoke();
-            }
-            else if (reason != Reason)
-            {
-                // The display name can settle after startup (e.g. a game sets
-                // its window title a little late). Refresh it silently, so the
-                // flyout picks it up without firing another notification.
-                Reason = reason;
-            }
-
-            UpdateShutdownTracking(previousState, CurrentState);
 
             Thread.Sleep(AppSettings.CheckIntervalMs);
         }
+    }
+
+    private void RunCycle(ref bool firstCycle, ref int cycle)
+    {
+        if (++cycle % 75 == 0)
+        {
+            Log.Debug($"[Perf] Managed: {GC.GetTotalMemory(false) / 1048576} MB, " +
+                $"working set: {Process.GetCurrentProcess().WorkingSet64 / 1048576} MB.");
+        }
+
+        // Pick up hand edits to settings.json without a restart.
+        AppSettings.Reload();
+        _gamepadSource.SetThreshold(AppSettings.GamepadInactivityCycles);
+        _xinputSource.SetThreshold(AppSettings.GamepadInactivityCycles);
+        _rawSource.SetThreshold(AppSettings.GamepadInactivityCycles);
+        _gpuSource.SetThreshold(AppSettings.GpuInactivityCycles);
+        _downloadSource.SetThreshold(AppSettings.DownloadInactivityCycles);
+
+        // Activity checks run concurrently: each one blocks
+        // on hardware/counter sampling, so sequential calls add up.
+        // The monitors own disjoint state, sharing is safe here.
+        Task<(MonitoredSource Source, bool Active, Exception? Error)>[] checkTasks = _sources
+            .Select(source => Task.Run(() =>
+            {
+                try
+                {
+                    return (source, source.Monitor.CheckActive(), (Exception?)null);
+                }
+                catch (Exception ex)
+                {
+                    return (source, false, ex);
+                }
+            }))
+            .ToArray();
+
+        // A hung or broken monitor must not stall the worker (and with it the
+        // shutdown timer) forever. Unfinished sources keep their old state.
+        if (!Task.WaitAll(checkTasks, TimeSpan.FromSeconds(30)))
+        {
+            Log.Error("[Engine ERROR] Activity check timed out; keeping previous source states.");
+        }
+
+        foreach (var task in checkTasks)
+        {
+            if (!task.IsCompletedSuccessfully)
+            {
+                continue;
+            }
+
+            var (source, active, error) = task.Result;
+            if (error != null)
+            {
+                Log.Error($"[Engine ERROR] {source.Monitor.GetType().Name} check failed: " +
+                    $"{error.GetType().Name}: {error.Message}");
+                continue;
+            }
+
+            source.Update(active);
+            if (active && source.Monitor is DualSenseMonitor or XInputMonitor or GamepadMonitor)
+            {
+                _lastGamepadInput = DateTime.Now;
+            }
+        }
+
+        MonitoredSource? activeSource = _sources.FirstOrDefault(s => s.IsTrulyActive);
+        AppState previousState = CurrentState;
+        AppState newlyCalculatedState = activeSource?.Monitor.ActiveState ?? AppState.Idle;
+        string reason = activeSource?.Monitor.DescribeActive() ?? "No activity";
+
+        // Nice-to-have: when a gamepad drives the Gaming state, prefer the
+        // name of the process loading the GPU. Falls back to "Gamepad
+        // input" when no name is available. Reuses the top PID the GPU
+        // check already measured; the trigger logic itself is untouched.
+        if (activeSource?.Monitor is DualSenseMonitor or XInputMonitor or GamepadMonitor &&
+            _gpuSource.IsTrulyActive &&
+            _gpuMonitor.TryGetActiveProcessName(out string gpuName))
+        {
+            reason = gpuName;
+        }
+
+        // Long absence kills Gaming even if the GPU still renders something.
+        // Downloads stay exempt. Disabled when the timeout is 0 (Never).
+        if (AppSettings.AfkTimeoutMinutes > 0 &&
+            newlyCalculatedState == AppState.Gaming &&
+            DateTime.Now - LastAnyInput() > TimeSpan.FromMinutes(AppSettings.AfkTimeoutMinutes))
+        {
+            newlyCalculatedState = AppState.Idle;
+            reason = "AFK timeout";
+        }
+
+        if (firstCycle || newlyCalculatedState != CurrentState)
+        {
+            firstCycle = false;
+            CurrentState = newlyCalculatedState;
+            Reason = reason;
+            ChangedAt = DateTime.Now;
+
+            Log.Information($"[State] New state: {CurrentState} ({Reason}).");
+
+            IsDisplayControlled = CurrentState == AppState.Gaming;
+            IsSleepControlled = CurrentState != AppState.Idle;
+            PowerManagement.SetDisplayRequired(IsDisplayControlled);
+            PowerManagement.SetSystemRequired(IsSleepControlled);
+
+            StateChanged?.Invoke();
+        }
+        else if (reason != Reason)
+        {
+            // The display name can settle after startup (e.g. a game sets
+            // its window title a little late). Refresh it silently, so the
+            // flyout picks it up without firing another notification.
+            Reason = reason;
+        }
+
+        UpdateShutdownTracking(previousState, CurrentState);
     }
 
     /// <summary>
@@ -285,7 +325,6 @@ public sealed class ActivityEngine : IDisposable
             _graceEndsAt = DateTime.Now.AddMinutes(graceMinutes);
             _finalEndsAt = null;
             TryGetLastInputTick(out _graceBaselineInputTick);
-            _graceBaselineGamepadInput = _lastGamepadInput;
             Log.Information($"[Shutdown] Downloads finished, grace period started ({graceMinutes} min).");
         }
 
@@ -328,9 +367,15 @@ public sealed class ActivityEngine : IDisposable
 
         if (_graceEndsAt != null)
         {
-            if (currentState != AppState.Idle || HasInputSinceGraceBaseline())
+            if (currentState != AppState.Idle)
             {
-                DisarmShutdown("aborted");
+                DisarmShutdown("aborted: state became active");
+                return;
+            }
+
+            if (HasInputSinceGraceBaseline())
+            {
+                DisarmShutdown("aborted: input detected");
                 return;
             }
 
