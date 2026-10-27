@@ -38,21 +38,20 @@ public partial class SettingsForm : Form
 
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
-        ClientSize = new Size(360, 436);
+        ClientSize = new Size(360, 440);
         BackColor = BgColor;
         ForeColor = TextColor;
         TopMost = true;
         ShowInTaskbar = false;
         KeyPreview = true;
 
-        // Header (draggable)
+        // Header
         var header = new Panel
         {
             Dock = DockStyle.Top,
             Height = 84,
             BackColor = BgColor
         };
-        header.MouseDown += Header_MouseDown;
 
         _stateDot = new Label
         {
@@ -63,7 +62,6 @@ public partial class SettingsForm : Form
             ForeColor = SecondaryColor,
             BackColor = BgColor
         };
-        _stateDot.MouseDown += Header_MouseDown;
 
         var titleLabel = new Label
         {
@@ -74,7 +72,6 @@ public partial class SettingsForm : Form
             ForeColor = TextColor,
             BackColor = BgColor
         };
-        titleLabel.MouseDown += Header_MouseDown;
 
         _stateLabel = new Label
         {
@@ -84,7 +81,6 @@ public partial class SettingsForm : Form
             ForeColor = TextColor,
             BackColor = BgColor
         };
-        _stateLabel.MouseDown += Header_MouseDown;
 
         _stateDetail = new Label
         {
@@ -98,7 +94,6 @@ public partial class SettingsForm : Form
             ForeColor = SecondaryColor,
             BackColor = BgColor
         };
-        _stateDetail.MouseDown += Header_MouseDown;
 
         header.Controls.Add(titleLabel);
         header.Controls.Add(_stateDot);
@@ -369,7 +364,7 @@ public partial class SettingsForm : Form
         var grid = new TableLayoutPanel
         {
             Location = new Point(20, 96),
-            Size = new Size(320, 324),
+            Size = new Size(320, 334),
             ColumnCount = 2,
             RowCount = 10,
             BackColor = BgColor,
@@ -387,7 +382,7 @@ public partial class SettingsForm : Form
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 48f));
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 26f));
         grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 26f));
-        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 34f));
+        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 38f));
 
         grid.Controls.Add(gpuCaption, 0, 0);
         grid.Controls.Add(_gpuLoadValue, 1, 0);
@@ -497,15 +492,6 @@ public partial class SettingsForm : Form
             Close();
         }
         base.OnKeyDown(e);
-    }
-
-    private void Header_MouseDown(object? sender, MouseEventArgs e)
-    {
-        if (e.Button == MouseButtons.Left)
-        {
-            NativeMethods.ReleaseCapture();
-            NativeMethods.SendMessage(Handle, NativeMethods.WM_NCLBUTTONDOWN, NativeMethods.HTCAPTION, 0);
-        }
     }
 
     private void ThresholdSlider_Scroll(object? sender, EventArgs e)
