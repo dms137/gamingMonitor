@@ -290,15 +290,15 @@ public class TrayApplicationContext : ApplicationContext
     /// </summary>
     private void Shutdown(string reason)
     {
+        // The engine releases its power requests on its own worker thread:
+        // SetThreadExecutionState is per thread, so calling it here did nothing.
+        Log.Information($"{reason} Releasing power requests...");
         _engine.Dispose();
 
         // Persist any settings changed in an open flyout, even if it does
         // not get a chance to close through its normal path.
         AppSettings.Save();
 
-        Log.Information($"{reason} Releasing power requests...");
-        PowerManagement.SetDisplayRequired(false);
-        PowerManagement.SetSystemRequired(false);
         Log.Information("----------------------------");
         Log.CloseAndFlush();
 

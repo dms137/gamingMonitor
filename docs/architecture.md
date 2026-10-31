@@ -25,13 +25,19 @@ A worker thread runs the check loop:
    otherwise `Idle`.
 4. `SetThreadExecutionState` is called **only on transitions**, never
    every cycle. The first cycle always reports, so startup shows the
-   same state toast as any other transition.
+   same state toast as any other transition. The API is per thread,
+   so the worker also releases the requests itself when it stops.
 5. `StateChanged` is raised on the worker thread; the tray marshals
    UI updates to the UI thread via `SynchronizationContext`.
 
 Default timing: 10s base interval (≈12s effective with sampling),
-gamepad exits after 30 quiet cycles (~6 min), downloads and GPU
-after 10 (~2 min). All tunable, see [Configuration](configuration.md).
+gamepad exits after 30 quiet cycles (~6 min), GPU after 10 (~2 min),
+downloads after 5 (~1 min). All tunable, see [Configuration](configuration.md).
+
+Timers (AFK, shutdown grace and countdown) run on the monotonic
+`Environment.TickCount64`, so clock changes and DST cannot shift them.
+A monitor check that hangs past the 30s cycle timeout is never started
+a second time in parallel; that source is skipped until it returns.
 
 Every ~15 min the engine logs a `[Perf]` line (managed heap + working
 set, `Debug` level) so memory growth can be eyeballed over long
@@ -48,8 +54,12 @@ an overnight Steam download is never killed by the AFK timer.
 
 Optional shutdown after downloads (`ShutdownGraceMinutes`, default
 Never): the `Downloading → Idle` transition arms a silent grace period.
-Any input or state change aborts it; surviving silence triggers a
-one-minute force toast with live countdown and a Cancel button, then
+A state change aborts it, and so does keyboard/mouse input seen in
+two separate cycles: one stray event (mouse jitter, software that
+injects input) no longer counts as the user coming back. Each input
+hit is logged as `[Shutdown] Input during grace period (n/2)`.
+Surviving silence triggers a one-minute force toast with a countdown
+that updates in place (no re-popup each cycle) and a Cancel button, then
 `shutdown /s /t 5`. Cancel also runs `shutdown /a` for safety. The app
 itself never schedules anything with the OS before the final moment,
 so killing it mid-countdown cancels everything implicitly.
@@ -91,7 +101,7 @@ safely falls back to normal hysteresis.
   load, state with trigger reason and duration, threshold slider,
   autostart toggle, version. Auto-closes on outside click
   (low-level mouse hook, `Deactivate` was unreliable).
-- **NativeMethods** — all Win32 interop in one place (drag, rounded
+- **NativeMethods** — all Win32 interop in one place (input idle time, XInput, rounded
   corners, mouse hook, icon handles).
 - The app is `PerMonitorV2` DPI-aware (`ApplicationHighDpiMode`);
   layout scales via WinForms autoscaling, corner rounding re-applies

@@ -38,7 +38,7 @@ public static partial class Program
         LoggingConfig.DebugLogs = args.Contains("--debug-logs");
 
         // Mandatory initialization of AUMID and Toast Manager
-        const string MyAumid = "MyCompany.GamingMonitor";
+        const string MyAumid = "dms137.GamingMonitor";
         NotificationAumidHelper.SetCurrentProcessExplicitAppUserModelID(MyAumid);
 
         // Enable modern control styles for settings UI

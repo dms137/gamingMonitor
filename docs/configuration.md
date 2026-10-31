@@ -10,14 +10,13 @@ so prefer editing while the app is stopped.
 | `GpuThresholdPercent` | 25 | 5–90 | GPU load % treated as gaming (also the flyout slider) |
 | `ShowStateNotifications` | true | — | State-change toasts on/off (update toasts always show) |
 | `SkippedUpdateVersion` | "" | — | Release tag skipped via the toast button; empty clears the skip |
-| `ShowStateNotifications` | true | — | State-change toasts on/off (update toasts always show) |
 | `CheckIntervalMs` | 10000 | 2000–60000 | Delay between checks |
 | `GamepadInactivityCycles` | 30 | 1–600 | Quiet cycles before the gamepad drops out (~6 min) |
-| `DownloadInactivityCycles` | 10 | 1–600 | Same for downloads (~2 min) |
+| `DownloadInactivityCycles` | 5 | 1–600 | Same for downloads (~1 min) |
 | `GpuInactivityCycles` | 10 | 1–600 | Same for GPU (~2 min) |
 | `AfkTimeoutMinutes` | 120 | 0–720, 0 = Never | No keyboard/mouse/gamepad input for this long forces `Gaming` back to `Idle` (downloads stay exempt). Also the flyout slider (1–6h + Never) |
 | `DownloadProcesses` | `["steam", "gamingservicesnet"]` | — | Process names watched for download activity |
-| `ShutdownGraceMinutes` | 0 | 0–60, 0 = Never | Silent minutes after downloads finish before the shutdown countdown. Any input or state change aborts. Also the flyout slider (1/2/5/10 min + Never) |
+| `ShutdownGraceMinutes` | 0 | 0–60, 0 = Never | Silent minutes after downloads finish before the shutdown countdown. A state change or keyboard/mouse input in two separate cycles aborts. Also the flyout slider (1/2/5/10 min + Never) |
 
 Missing keys fall back to defaults, so old files keep working.
 

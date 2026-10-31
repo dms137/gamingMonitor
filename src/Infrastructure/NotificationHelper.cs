@@ -3,6 +3,7 @@ namespace GamingMonitor.Infrastructure;
 using Microsoft.Toolkit.Uwp.Notifications;
 using Serilog;
 using System.Runtime.InteropServices;
+using Windows.UI.Notifications;
 
 public static partial class NotificationAumidHelper
 {
@@ -14,6 +15,13 @@ public static partial class NotificationAumidHelper
 
 public static class NotificationHelper
 {
+    private const string ShutdownTag = "gm-shutdown";
+    private const string CountdownBinding = "countdown";
+
+    // Set while the countdown toast is up and can be updated in place.
+    // Only touched under the engine's shutdown lock.
+    private static bool _countdownShown;
+
     private static ToastContentBuilder AppendStatus(this ToastContentBuilder builder, bool isDisplayControlled, bool isSleepControlled)
     {
         string displayString = isDisplayControlled ? "always on" : "can turn off";
@@ -101,17 +109,33 @@ public static class NotificationHelper
     /// </summary>
     public static void ShowShutdownCountdownNotification(int secondsRemaining)
     {
+        string status = $"Shutdown in {secondsRemaining} seconds. Click Cancel to stop it.";
         try
         {
+            // Refresh the live toast in place: re-showing it every cycle
+            // popped it up (with sound) again each time.
+            if (_countdownShown && TryUpdateCountdown(status))
+            {
+                return;
+            }
+
+            // First show, or the user dismissed it: show it again,
+            // so the countdown is never silent.
             HideShutdownNotification();
             new ToastContentBuilder()
                 .AddText("Download finished. Shutting down.")
-                .AddText($"Shutdown in {secondsRemaining} seconds. Click Cancel to stop it.")
+                .AddVisualChild(new AdaptiveText { Text = new BindableString(CountdownBinding) })
                 .AddButton(new ToastButton()
                     .SetContent("Cancel")
                     .AddArgument("action", "cancelShutdown"))
                 .SetToastDuration(ToastDuration.Long)
-                .Show(toast => toast.Tag = "gm-shutdown");
+                .Show(toast =>
+                {
+                    toast.Tag = ShutdownTag;
+                    toast.Data = new NotificationData { SequenceNumber = 0 };
+                    toast.Data.Values[CountdownBinding] = status;
+                });
+            _countdownShown = true;
         }
         catch (Exception ex)
         {
@@ -133,7 +157,7 @@ public static class NotificationHelper
                 .AddText("Shutdown canceled")
                 .AddText("Activity detected - your PC will stay on.")
                 .SetToastDuration(ToastDuration.Short)
-                .Show(toast => toast.Tag = "gm-shutdown");
+                .Show(toast => toast.Tag = ShutdownTag);
         }
         catch (Exception ex)
         {
@@ -141,11 +165,21 @@ public static class NotificationHelper
         }
     }
 
+    private static bool TryUpdateCountdown(string status)
+    {
+        // SequenceNumber 0 always applies, regardless of earlier updates.
+        var data = new NotificationData { SequenceNumber = 0 };
+        data.Values[CountdownBinding] = status;
+        return ToastNotificationManagerCompat.CreateToastNotifier().Update(data, ShutdownTag)
+            == NotificationUpdateResult.Succeeded;
+    }
+
     public static void HideShutdownNotification()
     {
+        _countdownShown = false;
         try
         {
-            ToastNotificationManagerCompat.History.Remove("gm-shutdown");
+            ToastNotificationManagerCompat.History.Remove(ShutdownTag);
         }
         catch { }
     }

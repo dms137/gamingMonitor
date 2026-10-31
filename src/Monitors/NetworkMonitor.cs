@@ -4,7 +4,7 @@ using GamingMonitor.Infrastructure;
 using Serilog;
 using System.Diagnostics;
 
-public class NetworkMonitor : IActivityMonitor
+public class NetworkMonitor : IActivityMonitor, IDisposable
 {
     private const int DOWNLOAD_THRESHOLD_BYTES_PER_SEC = 1_310_720; // ~10 Mbps
 
@@ -94,5 +94,16 @@ public class NetworkMonitor : IActivityMonitor
         LastActiveRateMbps = isAnyActive ? topRateMB : 0;
 
         return isAnyActive;
+    }
+
+    public void Dispose()
+    {
+        foreach (var monitor in _monitors.Values)
+        {
+            try { monitor.Dispose(); }
+            catch { }
+        }
+
+        _monitors.Clear();
     }
 }

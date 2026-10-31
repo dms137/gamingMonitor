@@ -35,6 +35,9 @@ jobs:
           -p:PublishTrimmed=false
           -o publish
 
+      - name: Audit packages
+        run: dotnet list src/GamingMonitor.csproj package --vulnerable --include-transitive
+
       - name: Pack release archive
         shell: pwsh
         run: Compress-Archive -Path publish/GamingMonitor.exe,publish/assets -DestinationPath GamingMonitor-${{ github.ref_name }}-win-x64.zip

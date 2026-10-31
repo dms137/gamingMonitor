@@ -12,6 +12,11 @@ using System.Runtime.InteropServices;
 /// </summary>
 public sealed class ActivityEngine : IDisposable
 {
+    // A single stray input event (mouse jitter, software injecting input)
+    // used to abort the grace period on its own. Someone who is really
+    // back keeps producing input, so it must show up in this many cycles.
+    private const int GraceAbortInputCycles = 2;
+
     private readonly DualSenseMonitor _dualSenseMonitor = new DualSenseMonitor();
     private readonly XInputMonitor _xinputMonitor = new XInputMonitor();
     private readonly GamepadMonitor _rawGamepadMonitor = new GamepadMonitor();
@@ -23,12 +28,22 @@ public sealed class ActivityEngine : IDisposable
     private readonly MonitoredSource _gpuSource;
     private readonly MonitoredSource _downloadSource;
     private readonly List<MonitoredSource> _sources;
+    private readonly Dictionary<MonitoredSource, Task<(bool Active, Exception? Error)>> _pendingChecks = new();
+    private readonly ManualResetEventSlim _stopEvent = new ManualResetEventSlim(false);
     private Thread? _thread;
-    private volatile bool _stop;
-    private DateTime _lastGamepadInput = DateTime.Now;
-    private DateTime? _graceEndsAt;
-    private DateTime? _finalEndsAt;
-    private uint _graceBaselineInputTick;
+
+    // Timers use the monotonic tick count (ms), so clock changes and
+    // DST cannot stretch or cut the AFK timeout or the shutdown countdown.
+    private long _lastGamepadInputMs = Environment.TickCount64;
+
+    // Shutdown tracking is touched by the worker and by toast activation
+    // (Cancel button) on another thread.
+    private readonly object _shutdownLock = new object();
+    private long? _graceStartedAtMs;
+    private long? _graceEndsAtMs;
+    private long? _finalEndsAtMs;
+    private uint _graceLastInputTick;
+    private int _graceInputCycles;
 
     public event Action? StateChanged;
 
@@ -56,9 +71,19 @@ public sealed class ActivityEngine : IDisposable
         _thread.Start();
     }
 
+    /// <summary>
+    /// Stops the worker, which releases its power requests on the way out,
+    /// then disposes hardware handles. Call from the UI thread on exit.
+    /// </summary>
     public void Dispose()
     {
-        _stop = true;
+        _stopEvent.Set();
+        if (_thread != null && !_thread.Join(TimeSpan.FromSeconds(5)))
+        {
+            // Process exit releases the power requests anyway.
+            Log.Warning("[Engine] Worker did not stop in time.");
+        }
+
         foreach (var monitor in _sources.Select(s => s.Monitor).OfType<IDisposable>())
         {
             try { monitor.Dispose(); } catch { }
@@ -71,59 +96,50 @@ public sealed class ActivityEngine : IDisposable
     /// </summary>
     public void CancelShutdown()
     {
-        bool wasArmed = _graceEndsAt != null || _finalEndsAt != null;
-        _graceEndsAt = null;
-        _finalEndsAt = null;
-        if (!wasArmed)
+        lock (_shutdownLock)
         {
-            return;
-        }
-
-        NotificationHelper.ShowShutdownCanceledNotification();
-        try
-        {
-            Process.Start(new ProcessStartInfo("shutdown", "/a")
+            bool wasArmed = _graceEndsAtMs != null || _finalEndsAtMs != null;
+            ClearShutdownTimers();
+            if (!wasArmed)
             {
-                UseShellExecute = false,
-                CreateNoWindow = true
-            });
-        }
-        catch { }
+                return;
+            }
 
-        Log.Information("[Shutdown] Countdown canceled by user.");
+            NotificationHelper.ShowShutdownCanceledNotification();
+            try
+            {
+                Process.Start(new ProcessStartInfo("shutdown", "/a")
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                });
+            }
+            catch { }
+
+            Log.Information("[Shutdown] Countdown canceled by user.");
+        }
     }
 
-    private DateTime LastAnyInput()
+    private long LastAnyInputMs()
     {
-        DateTime keyboardMouse = GetLastKeyboardMouseInput();
-        return keyboardMouse > _lastGamepadInput ? keyboardMouse : _lastGamepadInput;
+        return Math.Max(GetLastKeyboardMouseInputMs(), _lastGamepadInputMs);
     }
 
     /// <summary>
-    /// System-wide last keyboard/mouse input. Fail-open: on error
-    /// reports now so a broken API can never force sleep.
+    /// System-wide last keyboard/mouse input on the TickCount64 scale.
+    /// Fail-open: on error reports now so a broken API can never force sleep.
     /// </summary>
-    private static DateTime GetLastKeyboardMouseInput()
+    private static long GetLastKeyboardMouseInputMs()
     {
-        try
+        long now = Environment.TickCount64;
+        if (!TryGetLastInputTick(out uint tick))
         {
-            var info = new NativeMethods.LASTINPUTINFO
-            {
-                cbSize = (uint)Marshal.SizeOf<NativeMethods.LASTINPUTINFO>()
-            };
-
-            if (!NativeMethods.GetLastInputInfo(ref info))
-            {
-                return DateTime.Now;
-            }
-
-            int msAgo = unchecked(Environment.TickCount - (int)info.dwTime);
-            return DateTime.Now.AddMilliseconds(-Math.Max(0, msAgo));
+            return now;
         }
-        catch
-        {
-            return DateTime.Now;
-        }
+
+        // Both ticks are 32-bit and wrap together, unsigned math keeps the age right.
+        uint msAgo = unchecked((uint)Environment.TickCount - tick);
+        return now - msAgo;
     }
 
     /// <summary>
@@ -152,20 +168,33 @@ public sealed class ActivityEngine : IDisposable
     }
 
     /// <summary>
-    /// True when keyboard/mouse or gamepad input arrived after the grace
-    /// period started. Uses the raw input tick so clock-resolution jitter
-    /// cannot fake an input event (which used to abort the countdown
-    /// immediately after it was armed).
+    /// Counts the cycles in which new keyboard/mouse input arrived during
+    /// the grace period and reports when the user is clearly back.
+    /// Uses the raw input tick so clock-resolution jitter cannot fake an
+    /// input event. Every hit is logged, so phantom input can be traced.
     /// </summary>
-    private bool HasInputSinceGraceBaseline()
+    private bool IsUserBackDuringGrace()
     {
-        // Gamepad activity is already covered by the state change above
-        // (it flips to Gaming), so only keyboard/mouse is checked here.
-        // This keeps a drifting stick from silently aborting the countdown.
+        // Gamepad activity is already covered by the state change (it flips
+        // to Gaming), so only keyboard/mouse is checked here. This keeps a
+        // drifting stick from silently aborting the countdown.
         // Fail-safe: if the API cannot be read, never abort on that alone.
-        return _graceBaselineInputTick != 0 &&
-            TryGetLastInputTick(out uint tick) &&
-            tick != _graceBaselineInputTick;
+        if (_graceLastInputTick == 0 ||
+            !TryGetLastInputTick(out uint tick) ||
+            tick == _graceLastInputTick)
+        {
+            return false;
+        }
+
+        _graceLastInputTick = tick;
+        _graceInputCycles++;
+
+        long sinceStartSec = (Environment.TickCount64 - (_graceStartedAtMs ?? Environment.TickCount64)) / 1000;
+        uint idleMs = unchecked((uint)Environment.TickCount - tick);
+        Log.Information($"[Shutdown] Input during grace period ({_graceInputCycles}/{GraceAbortInputCycles}): " +
+            $"{sinceStartSec}s after start, last input {idleMs} ms ago.");
+
+        return _graceInputCycles >= GraceAbortInputCycles;
     }
 
     private void MainCheckLoop()
@@ -174,7 +203,7 @@ public sealed class ActivityEngine : IDisposable
         // state notification as any other transition.
         bool firstCycle = true;
         int cycle = 0;
-        while (!_stop)
+        while (!_stopEvent.IsSet)
         {
             // Never let one failed cycle kill the worker thread: that used
             // to stop all monitoring (and the shutdown timer) silently.
@@ -187,16 +216,26 @@ public sealed class ActivityEngine : IDisposable
                 Log.Error($"[Engine ERROR] Cycle failed: {ex.GetType().Name}: {ex.Message}");
             }
 
-            Thread.Sleep(AppSettings.CheckIntervalMs);
+            _stopEvent.Wait(AppSettings.CheckIntervalMs);
         }
+
+        // SetThreadExecutionState is per thread: release on the thread that set it.
+        lock (_shutdownLock)
+        {
+            DisarmShutdown("dropped: application exiting");
+        }
+
+        PowerManagement.SetDisplayRequired(false);
+        PowerManagement.SetSystemRequired(false);
     }
 
     private void RunCycle(ref bool firstCycle, ref int cycle)
     {
         if (++cycle % 75 == 0)
         {
+            using var self = Process.GetCurrentProcess();
             Log.Debug($"[Perf] Managed: {GC.GetTotalMemory(false) / 1048576} MB, " +
-                $"working set: {Process.GetCurrentProcess().WorkingSet64 / 1048576} MB.");
+                $"working set: {self.WorkingSet64 / 1048576} MB.");
         }
 
         // Pick up hand edits to settings.json without a restart.
@@ -210,35 +249,47 @@ public sealed class ActivityEngine : IDisposable
         // Activity checks run concurrently: each one blocks
         // on hardware/counter sampling, so sequential calls add up.
         // The monitors own disjoint state, sharing is safe here.
-        Task<(MonitoredSource Source, bool Active, Exception? Error)>[] checkTasks = _sources
-            .Select(source => Task.Run(() =>
+        var started = new List<(MonitoredSource Source, Task<(bool Active, Exception? Error)> Task)>();
+        foreach (var source in _sources)
+        {
+            // A check that hung in an earlier cycle is still running: never
+            // start a second one on the same monitor, its state is not thread-safe.
+            if (_pendingChecks.TryGetValue(source, out var pending) && !pending.IsCompleted)
+            {
+                Log.Warning($"[Engine] {source.Monitor.GetType().Name} check still running from an earlier cycle, skipped.");
+                continue;
+            }
+
+            var task = Task.Run(() =>
             {
                 try
                 {
-                    return (source, source.Monitor.CheckActive(), (Exception?)null);
+                    return (source.Monitor.CheckActive(), (Exception?)null);
                 }
                 catch (Exception ex)
                 {
-                    return (source, false, ex);
+                    return (false, ex);
                 }
-            }))
-            .ToArray();
+            });
+            _pendingChecks[source] = task;
+            started.Add((source, task));
+        }
 
         // A hung or broken monitor must not stall the worker (and with it the
         // shutdown timer) forever. Unfinished sources keep their old state.
-        if (!Task.WaitAll(checkTasks, TimeSpan.FromSeconds(30)))
+        if (!Task.WaitAll(started.Select(s => (Task)s.Task).ToArray(), TimeSpan.FromSeconds(30)))
         {
             Log.Error("[Engine ERROR] Activity check timed out; keeping previous source states.");
         }
 
-        foreach (var task in checkTasks)
+        foreach (var (source, task) in started)
         {
             if (!task.IsCompletedSuccessfully)
             {
                 continue;
             }
 
-            var (source, active, error) = task.Result;
+            var (active, error) = task.Result;
             if (error != null)
             {
                 Log.Error($"[Engine ERROR] {source.Monitor.GetType().Name} check failed: " +
@@ -249,7 +300,7 @@ public sealed class ActivityEngine : IDisposable
             source.Update(active);
             if (active && source.Monitor is DualSenseMonitor or XInputMonitor or GamepadMonitor)
             {
-                _lastGamepadInput = DateTime.Now;
+                _lastGamepadInputMs = Environment.TickCount64;
             }
         }
 
@@ -273,7 +324,7 @@ public sealed class ActivityEngine : IDisposable
         // Downloads stay exempt. Disabled when the timeout is 0 (Never).
         if (AppSettings.AfkTimeoutMinutes > 0 &&
             newlyCalculatedState == AppState.Gaming &&
-            DateTime.Now - LastAnyInput() > TimeSpan.FromMinutes(AppSettings.AfkTimeoutMinutes))
+            Environment.TickCount64 - LastAnyInputMs() > AppSettings.AfkTimeoutMinutes * 60_000L)
         {
             newlyCalculatedState = AppState.Idle;
             reason = "AFK timeout";
@@ -303,13 +354,16 @@ public sealed class ActivityEngine : IDisposable
             Reason = reason;
         }
 
-        UpdateShutdownTracking(previousState, CurrentState);
+        lock (_shutdownLock)
+        {
+            UpdateShutdownTracking(previousState, CurrentState);
+        }
     }
 
     /// <summary>
-    /// Arms on the Downloading-to-Idle transition, aborts on any input
-    /// or state change, fires shutdown after the grace period plus
-    /// a one-minute force toast countdown.
+    /// Arms on the Downloading-to-Idle transition, aborts on sustained input
+    /// or a state change, fires shutdown after the grace period plus
+    /// a one-minute force toast countdown. Caller holds _shutdownLock.
     /// </summary>
     private void UpdateShutdownTracking(AppState previousState, AppState currentState)
     {
@@ -320,15 +374,18 @@ public sealed class ActivityEngine : IDisposable
             return;
         }
 
+        long now = Environment.TickCount64;
         if (previousState == AppState.Downloading && currentState == AppState.Idle)
         {
-            _graceEndsAt = DateTime.Now.AddMinutes(graceMinutes);
-            _finalEndsAt = null;
-            TryGetLastInputTick(out _graceBaselineInputTick);
+            _graceStartedAtMs = now;
+            _graceEndsAtMs = now + graceMinutes * 60_000L;
+            _finalEndsAtMs = null;
+            _graceInputCycles = 0;
+            TryGetLastInputTick(out _graceLastInputTick);
             Log.Information($"[Shutdown] Downloads finished, grace period started ({graceMinutes} min).");
         }
 
-        if (_finalEndsAt != null)
+        if (_finalEndsAtMs != null)
         {
             // During the final countdown the toast is the contract: the user
             // cancels it deliberately via the button, plain input no longer
@@ -340,7 +397,7 @@ public sealed class ActivityEngine : IDisposable
                 return;
             }
 
-            int remaining = (int)Math.Ceiling((_finalEndsAt.Value - DateTime.Now).TotalSeconds);
+            int remaining = (int)Math.Ceiling((_finalEndsAtMs.Value - now) / 1000.0);
             if (remaining <= 0)
             {
                 DisarmShutdown(null);
@@ -365,7 +422,7 @@ public sealed class ActivityEngine : IDisposable
             return;
         }
 
-        if (_graceEndsAt != null)
+        if (_graceEndsAtMs != null)
         {
             if (currentState != AppState.Idle)
             {
@@ -373,27 +430,36 @@ public sealed class ActivityEngine : IDisposable
                 return;
             }
 
-            if (HasInputSinceGraceBaseline())
+            if (IsUserBackDuringGrace())
             {
                 DisarmShutdown("aborted: input detected");
                 return;
             }
 
-            if (DateTime.Now >= _graceEndsAt.Value)
+            if (now >= _graceEndsAtMs.Value)
             {
-                _graceEndsAt = null;
-                _finalEndsAt = DateTime.Now.AddMinutes(1);
+                _graceEndsAtMs = null;
+                _finalEndsAtMs = now + 60_000L;
                 NotificationHelper.ShowShutdownCountdownNotification(60);
                 Log.Warning("[Shutdown] Grace over, final countdown started.");
             }
         }
     }
 
+    private void ClearShutdownTimers()
+    {
+        _graceStartedAtMs = null;
+        _graceEndsAtMs = null;
+        _finalEndsAtMs = null;
+    }
+
+    /// <summary>
+    /// Drops a pending shutdown. Caller holds _shutdownLock.
+    /// </summary>
     private void DisarmShutdown(string? reason = null, bool notifyUser = false)
     {
-        bool wasArmed = _graceEndsAt != null || _finalEndsAt != null;
-        _graceEndsAt = null;
-        _finalEndsAt = null;
+        bool wasArmed = _graceEndsAtMs != null || _finalEndsAtMs != null;
+        ClearShutdownTimers();
         if (wasArmed)
         {
             if (notifyUser)

@@ -36,6 +36,13 @@ public partial class SettingsForm : Form
     {
         _getState = getState;
 
+        // All sizes below are in 96-DPI pixels while fonts are in points
+        // (already DPI-sized). Without DPI autoscaling the text grew at
+        // 125-150% but the layout did not, cutting off the footer.
+        SuspendLayout();
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode = AutoScaleMode.Dpi;
+
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
         ClientSize = new Size(360, 440);
@@ -407,6 +414,8 @@ public partial class SettingsForm : Form
 
         Controls.Add(header);
         Controls.Add(grid);
+        ResumeLayout(false);
+        PerformLayout();
 
         UpdateValueLabel();
         UpdateAfkValueLabel();
@@ -435,7 +444,11 @@ public partial class SettingsForm : Form
 
         // Position near the tray, above the taskbar
         var area = Screen.FromPoint(Cursor.Position).WorkingArea;
-        Location = new Point(area.Right - Width - 16, area.Bottom - Height - 16);
+        // Never above the top edge, even on a short screen.
+        int margin = LogicalToDeviceUnits(16);
+        Location = new Point(
+            Math.Max(area.Left, area.Right - Width - margin),
+            Math.Max(area.Top, area.Bottom - Height - margin));
 
         ApplyRoundedCorners();
 

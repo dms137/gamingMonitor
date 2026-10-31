@@ -38,13 +38,22 @@ public static class AppSettings
     private static List<string> _downloadProcesses = new List<string> { "steam", "gamingservicesnet" };
     private static string _skippedUpdateVersion = string.Empty;
     private static bool _dirty;
+    private static string? _lastLoadError;
+
+    // The flyout (UI thread) writes while the engine (worker) reloads every
+    // cycle. Without the lock a slider change landing between the _dirty
+    // check and the file read was silently reverted.
+    private static readonly object _sync = new object();
 
     private static void SetField<T>(ref T field, T value)
     {
-        if (!EqualityComparer<T>.Default.Equals(field, value))
+        lock (_sync)
         {
-            field = value;
-            _dirty = true;
+            if (!EqualityComparer<T>.Default.Equals(field, value))
+            {
+                field = value;
+                _dirty = true;
+            }
         }
     }
 
@@ -123,10 +132,13 @@ public static class AppSettings
                 .Select(name => name.Trim())
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList() ?? new List<string>();
-            if (!cleaned.SequenceEqual(_downloadProcesses, StringComparer.OrdinalIgnoreCase))
+            lock (_sync)
             {
-                _downloadProcesses = cleaned;
-                _dirty = true;
+                if (!cleaned.SequenceEqual(_downloadProcesses, StringComparer.OrdinalIgnoreCase))
+                {
+                    _downloadProcesses = cleaned;
+                    _dirty = true;
+                }
             }
         }
     }
@@ -135,6 +147,14 @@ public static class AppSettings
     /// Loads settings from settings.json if it exists, otherwise keeps defaults.
     /// </summary>
     public static void Load(bool log = true)
+    {
+        lock (_sync)
+        {
+            LoadCore(log);
+        }
+    }
+
+    private static void LoadCore(bool log)
     {
         try
         {
@@ -173,10 +193,23 @@ public static class AppSettings
 
             // Memory now matches the file; only unsaved user edits are dirty.
             _dirty = false;
+
+            if (_lastLoadError != null)
+            {
+                Log.Information("[Settings] Settings file readable again.");
+                _lastLoadError = null;
+            }
         }
         catch (Exception ex)
         {
-            Log.Error($"[Settings ERROR] Failed to load settings, using defaults: {ex.Message}");
+            // Reload runs every cycle: a broken file used to log the same
+            // error every ~10 s. Log once per distinct failure instead.
+            if (log || ex.Message != _lastLoadError)
+            {
+                Log.Error($"[Settings ERROR] Failed to load settings, keeping current values: {ex.Message}");
+            }
+
+            _lastLoadError = ex.Message;
         }
     }
 
@@ -185,6 +218,14 @@ public static class AppSettings
     /// Picks up hand edits to settings.json.
     /// </summary>
     public static void Reload()
+    {
+        lock (_sync)
+        {
+            ReloadCore();
+        }
+    }
+
+    private static void ReloadCore()
     {
         // Never clobber edits the user made but has not saved yet: the
         // settings form persists on close, so a cycle in between would
@@ -228,6 +269,14 @@ public static class AppSettings
     /// </summary>
     public static bool Save()
     {
+        lock (_sync)
+        {
+            return SaveCore();
+        }
+    }
+
+    private static bool SaveCore()
+    {
         if (!_dirty)
         {
             return false;
@@ -250,7 +299,11 @@ public static class AppSettings
                 ShutdownGraceMinutes = ShutdownGraceMinutes
             };
             string json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_settingsPath, json);
+            // Write aside and swap in, so a crash mid-write cannot leave
+            // a truncated settings.json behind.
+            string tempPath = _settingsPath + ".tmp";
+            File.WriteAllText(tempPath, json);
+            File.Move(tempPath, _settingsPath, overwrite: true);
             _dirty = false;
 
             Log.Information($"[Settings] Saved. GPU threshold: {GpuThresholdPercent:F0}%.");

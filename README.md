@@ -53,7 +53,8 @@ Downloads stay exempt.
 
 `PC off after download` (default Never) waits out a grace period once
 downloads finish, then shuts the PC down with a cancellable countdown.
-Any input or state change aborts — nothing happens while you're around.
+Activity or a few moments of keyboard/mouse use abort it — nothing
+happens while you're around.
 
 Fine-tuning lives in `assets\settings.json` — see
 [Configuration](docs/configuration.md).
